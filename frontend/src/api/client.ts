@@ -14,3 +14,18 @@ export async function getHealth(): Promise<string>
 
   return data.status;
 }
+
+
+export async function getProjectFiles(projectName: string): Promise<string[]>
+{
+  const response = await fetch(
+    `${API_URL}/api/projects/${encodeURIComponent(projectName)}/files`
+  );
+
+  if (!response.ok)
+  {
+    throw new Error("Failed to fetch project files");
+  }
+
+  return response.json();
+}

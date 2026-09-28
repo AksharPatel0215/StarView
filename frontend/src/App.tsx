@@ -1,22 +1,39 @@
 import { useEffect, useState } from "react";
-import { getHealth } from "./api/client";
+import { getProjectFiles } from "./api/client";
+import FileTree from "./components/FileTree";
 
 
 function App()
 {
-  const [status, setStatus] = useState("Connecting...");
+  const [files, setFiles] = useState<string[]>([]);
+  const [error, setError] = useState("");
 
   useEffect(() =>
   {
-    getHealth()
-      .then(setStatus)
-      .catch(() => setStatus("Connection failed"));
+    getProjectFiles("Test Project")
+      .then(setFiles)
+      .catch(() => setError("Failed to load project files"));
   }, []);
 
   return (
-    <div>
-      <h1>StarView</h1>
-      <p>Backend status: {status}</p>
+    <div className="app">
+      <header className="header">
+        <h1>StarView</h1>
+      </header>
+
+      <main className="workspace">
+        <aside className="sidebar">
+          <h2>Test Project</h2>
+
+          {error && <p>{error}</p>}
+
+          <FileTree files={files} />
+        </aside>
+
+        <section className="editor">
+          <p>Select a file to begin editing.</p>
+        </section>
+      </main>
     </div>
   );
 }
