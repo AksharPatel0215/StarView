@@ -73,3 +73,25 @@ export async function saveProjectFile(
     throw new Error("Failed to save project file");
   }
 }
+
+export async function compileProjectFile(
+  projectName: string,
+  filePath: string
+): Promise<string>
+{
+  const response = await fetch(
+    `${API_URL}/api/projects/${encodeURIComponent(projectName)}/compile/${filePath}`,
+    {
+      method: "POST",
+    }
+  );
+
+  if (!response.ok)
+  {
+    throw new Error("Failed to compile LaTeX file");
+  }
+
+  const data = await response.json();
+
+  return data.pdf;
+}

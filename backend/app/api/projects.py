@@ -1,10 +1,12 @@
 from pathlib import Path
-
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
+
 from pydantic import BaseModel
 from app.core.filesystem import FileSystem
 from app.core.project_manager import ProjectManager
 from app.models import Project
+from app.core.latex import LatexCompiler
 
 
 router = APIRouter(prefix="/api/projects")
@@ -132,3 +134,72 @@ class FileUpdate(BaseModel):
             "path": path,
             "status": "saved",
         }
+@router.post("/{name}/compile/{path:path}")
+def compile_project_file(name: str, path: str):
+    project = project_manager.get_project(name)
+
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found",
+        )
+
+    compiler = LatexCompiler()
+
+    try:
+        result = compiler.compile(project.root, path)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="LaTeX file not found",
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=422,
+            detail=result,
+        )
+
+    return result
+
+@router.get("/{name}/pdf/{path:path}")
+def get_project_pdf(name: str, path: str):
+    project = project_manager.get_project(name)
+
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found",
+        )
+
+    pdf_path = (project.root / path).resolve()
+
+    try:
+        pdf_path.relative_to(project.root)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file path",
+        )
+
+    if not pdf_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="PDF not found",
+        )
+
+    if pdf_path.suffix != ".pdf":
+        raise HTTPException(
+            status_code=400,
+            detail="File is not a PDF",
+        )
+
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+    )
