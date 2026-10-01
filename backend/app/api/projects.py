@@ -1,5 +1,5 @@
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from pydantic import BaseModel
@@ -18,6 +18,29 @@ project_manager = ProjectManager()
 class ProjectCreate(BaseModel):
     name: str
     root: str
+
+
+@router.get("/local-directories")
+def browse_local_directories(path: str | None = Query(default=None)):
+    directory = Path(path).expanduser().resolve() if path else Path.home().resolve()
+    try:
+        if not directory.exists():
+            raise HTTPException(status_code=404, detail="Directory not found")
+        if not directory.is_dir():
+            raise HTTPException(status_code=400, detail="Path must be a directory")
+        directories = sorted(
+            (entry for entry in directory.iterdir() if entry.is_dir()),
+            key=lambda entry: entry.name.casefold(),
+        )
+        return {
+            "path": str(directory),
+            "parent": str(directory.parent) if directory.parent != directory else None,
+            "directories": [
+                {"name": entry.name, "path": str(entry)} for entry in directories
+            ],
+        }
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied for this directory")
 
 
 @router.get("")
@@ -92,11 +115,14 @@ def read_project_file(name: str, path: str):
             status_code=404,
             detail="File not found",
         )
+    except IsADirectoryError:
+        raise HTTPException(status_code=400, detail="Select a file, not a directory")
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Permission denied for this file")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=415, detail="This file cannot be opened as text")
     except ValueError:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid file path",
-        )
+        raise HTTPException(status_code=400, detail="Invalid file path")
 
     return {
         "path": path,

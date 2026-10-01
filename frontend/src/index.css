@@ -105,3 +105,25 @@ body
   height: 80vh;
   border: 1px solid #333;
 }
+
+.header { gap: 20px; }
+button, select, input { font: inherit; padding: 7px 10px; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+.workspace { min-height: 0; }
+.sidebar { overflow: auto; flex-shrink: 0; }
+.editor { flex: 1; min-width: 0; }
+.editor-header { gap: 12px; }
+.editor-header h2 { overflow-wrap: anywhere; font-size: 16px; }
+.preview { width: 38%; }
+.project-root { font-size: 12px; overflow-wrap: anywhere; color: #666; }
+.error { color: #a32020; padding: 8px 16px; white-space: pre-wrap; max-height: 180px; overflow: auto; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; background: #0008; display: flex; align-items: center; justify-content: center; }
+.folder-browser { background: white; border-radius: 10px; padding: 24px; width: min(640px, 90vw); max-height: 90vh; overflow: auto; }
+.path-controls { display: flex; gap: 8px; margin-top: 8px; }
+.path-controls input { flex: 1; min-width: 0; }
+.browser-navigation, .browser-actions { display: flex; gap: 8px; margin-top: 16px; }
+.browser-actions { justify-content: flex-end; }
+.directory-list { list-style: none; padding: 0; height: 240px; overflow: auto; }
+.directory-list button { width: 100%; text-align: left; border: 0; background: transparent; }
+.directory-list button:hover { background: #eee; }
