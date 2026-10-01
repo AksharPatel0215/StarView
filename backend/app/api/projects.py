@@ -106,34 +106,37 @@ def read_project_file(name: str, path: str):
 class FileUpdate(BaseModel):
     content: str
 
-    @router.put("/{name}/files/{path:path}")
-    def write_project_file(
-        name: str,
-        path: str,
-        file_data: FileUpdate,
-    ):
-        project = project_manager.get_project(name)
 
-        if project is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Project not found",
-            )
+@router.put("/{name}/files/{path:path}")
+def write_project_file(
+    name: str,
+    path: str,
+    file_data: FileUpdate,
+):
+    project = project_manager.get_project(name)
 
-        filesystem = FileSystem(project.root)
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project not found",
+        )
 
-        try:
-            filesystem.write_file(path, file_data.content)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid file path",
-            )
+    filesystem = FileSystem(project.root)
 
-        return {
-            "path": path,
-            "status": "saved",
-        }
+    try:
+        filesystem.write_file(path, file_data.content)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file path",
+        )
+
+    return {
+        "path": path,
+        "status": "saved",
+    }
+
+
 @router.post("/{name}/compile/{path:path}")
 def compile_project_file(name: str, path: str):
     project = project_manager.get_project(name)
