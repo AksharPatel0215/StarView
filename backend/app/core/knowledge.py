@@ -1,0 +1,98 @@
+import json
+import os
+import re
+import tempfile
+from pathlib import Path
+from threading import RLock
+
+from app.core.filesystem import FileSystem
+
+_LOCK = RLock()
+
+
+class KnowledgeGraph:
+    """Filesystem-backed, directed knowledge links between project documents."""
+
+    def __init__(self, root: Path):
+        self.root = root.resolve()
+        self.store = self.root / ".starview" / "links.json"
+        # Never follow a metadata directory or file outside the project.
+        self.store.resolve().relative_to(self.root)
+
+    def _read_links(self) -> list[dict]:
+        if not self.store.exists():
+            return []
+        data = json.loads(self.store.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or data.get("version") != 1 or not isinstance(data.get("links"), list):
+            raise ValueError("Invalid StarView connections file")
+        links = data["links"]
+        if any(not isinstance(link, dict) or not all(isinstance(link.get(key), str) for key in ("source", "target")) for link in links):
+            raise ValueError("Invalid StarView connections file")
+        return links
+
+    def _document(self, path: str) -> str:
+        document = (self.root / path).resolve()
+        relative = document.relative_to(self.root).as_posix()
+        if any(part.startswith(".") for part in Path(relative).parts):
+            raise ValueError("Choose a visible LaTeX document")
+        if document.suffix.lower() != ".tex":
+            raise ValueError("Connections must link LaTeX documents")
+        if not document.is_file():
+            raise FileNotFoundError("Document not found")
+        return relative
+
+    def _write_links(self, links: list[dict]) -> None:
+        self.store.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self.store.parent, delete=False) as handle:
+            temporary = Path(handle.name)
+            json.dump({"version": 1, "links": links}, handle, indent=2)
+            handle.write("\n")
+        try:
+            os.replace(temporary, self.store)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def connect(self, source: str, target: str) -> dict:
+        source, target = self._document(source), self._document(target)
+        if source == target:
+            raise ValueError("Choose a different document to connect")
+        with _LOCK:
+            links = self._read_links()
+            if not any(link["source"] == source and link["target"] == target for link in links):
+                links.append({"source": source, "target": target})
+                self._write_links(links)
+        return self.graph()
+
+    def disconnect(self, source: str, target: str) -> dict:
+        # Missing documents can still have stale links removed.
+        for path in (source, target):
+            (self.root / path).resolve().relative_to(self.root)
+        with _LOCK:
+            links = self._read_links()
+            self._write_links([link for link in links if not (link["source"] == source and link["target"] == target)])
+        return self.graph()
+
+    def graph(self) -> dict:
+        documents = []
+        for relative in FileSystem(self.root).list_files():
+            if relative.suffix.lower() != ".tex" or any(part.startswith(".") for part in relative.parts):
+                continue
+            path = self.root / relative
+            try:
+                path.resolve().relative_to(self.root)
+                content = path.read_text(encoding="utf-8")
+            except (ValueError, OSError):
+                continue
+            # Strip TeX comments so commented-out titles do not become names.
+            content = re.sub(r"(?<!\\)%[^\n]*", "", content)
+            title = re.search(r"\\title(?:\[[^\]]*\])?\s*\{([^{}]*)\}", content)
+            documents.append({
+                "path": relative.as_posix(),
+                "title": title.group(1).strip() if title else relative.stem.replace("_", " "),
+                "is_main": bool(re.search(r"\\documentclass(?:\[[^\]]*\])?\s*\{", content)),
+            })
+        documents.sort(key=lambda document: document["path"].casefold())
+        paths = {document["path"] for document in documents}
+        with _LOCK:
+            links = [{"source": link["source"], "target": link["target"], "missing": link["source"] not in paths or link["target"] not in paths} for link in self._read_links()]
+        return {"documents": documents, "links": links}

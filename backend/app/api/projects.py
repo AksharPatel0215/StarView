@@ -7,6 +7,7 @@ from app.core.filesystem import FileSystem
 from app.core.project_manager import ProjectManager
 from app.models import Project
 from app.core.latex import LatexCompiler
+from app.core.knowledge import KnowledgeGraph
 
 
 router = APIRouter(prefix="/api/projects")
@@ -29,7 +30,7 @@ def browse_local_directories(path: str | None = Query(default=None)):
         if not directory.is_dir():
             raise HTTPException(status_code=400, detail="Path must be a directory")
         directories = sorted(
-            (entry for entry in directory.iterdir() if entry.is_dir()),
+            (entry for entry in directory.iterdir() if entry.is_dir() and not entry.name.startswith(".")),
             key=lambda entry: entry.name.casefold(),
         )
         return {
@@ -187,6 +188,8 @@ def compile_project_file(name: str, path: str):
             status_code=400,
             detail=str(error),
         )
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error))
 
     if not result["success"]:
         raise HTTPException(
@@ -232,3 +235,61 @@ def get_project_pdf(name: str, path: str):
         pdf_path,
         media_type="application/pdf",
     )
+
+
+class DocumentConnection(BaseModel):
+    source: str
+    target: str
+
+
+def graph_for_project(name: str) -> KnowledgeGraph:
+    project = project_manager.get_project(name)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        return KnowledgeGraph(project.root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid connections storage path")
+
+
+@router.get("/{name}/connections")
+def get_connections(name: str):
+    try:
+        return graph_for_project(name).graph()
+    except (ValueError, OSError) as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@router.post("/{name}/connections")
+def create_connection(name: str, connection: DocumentConnection):
+    try:
+        return graph_for_project(name).connect(connection.source, connection.target)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Document not found")
+    except (ValueError, OSError) as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@router.delete("/{name}/connections")
+def delete_connection(name: str, connection: DocumentConnection):
+    try:
+        return graph_for_project(name).disconnect(connection.source, connection.target)
+    except (ValueError, OSError) as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@router.get("/{name}/assets/{path:path}")
+def get_project_asset(name: str, path: str):
+    project = project_manager.get_project(name)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    asset = (project.root / path).resolve()
+    try:
+        asset.relative_to(project.root.resolve())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid asset path")
+    if asset.suffix.lower() not in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}:
+        raise HTTPException(status_code=400, detail="Unsupported image format")
+    if not asset.is_file():
+        raise HTTPException(status_code=404, detail="Image not found")
+    return FileResponse(asset, headers={"X-Content-Type-Options": "nosniff"})

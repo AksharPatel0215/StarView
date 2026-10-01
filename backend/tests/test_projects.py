@@ -72,6 +72,7 @@ class LocalBrowsingTests(unittest.TestCase):
         self.directory.cleanup()
 
     def test_browse_directories(self):
+        (self.root / ".starview").mkdir()
         response = self.client.get("/api/projects/local-directories", params={"path": str(self.root)})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {

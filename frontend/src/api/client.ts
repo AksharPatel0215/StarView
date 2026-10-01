@@ -1,4 +1,4 @@
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 export type Project = { name: string; root: string };
 export type DirectoryListing = {
   path: string;
@@ -45,3 +45,12 @@ export async function compileProjectFile(name: string, path: string): Promise<st
 }
 export const getPdfUrl = (name: string, path: string, version: number) =>
   `${API_URL}/api${projectPath(name)}/pdf/${filePath(path)}?v=${version}`;
+
+export type DocumentNode = { path: string; title: string; is_main: boolean };
+export type DocumentLink = { source: string; target: string; missing: boolean };
+export type KnowledgeGraph = { documents: DocumentNode[]; links: DocumentLink[] };
+export const getConnections = (name: string) => request<KnowledgeGraph>(`${projectPath(name)}/connections`);
+export const connectDocuments = (name: string, source: string, target: string, remove = false) => request<KnowledgeGraph>(`${projectPath(name)}/connections`, {
+  method: remove ? "DELETE" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source, target }),
+});
+export const getAssetUrl = (name: string, path: string) => `${API_URL}/api${projectPath(name)}/assets/${filePath(path)}`;
