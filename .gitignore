@@ -2,3 +2,7 @@
 # Python bytecode
 __pycache__/
 *.py[cod]
+
+# LaTeX output is local; knowledge connections can be versioned.
+**/.starview/build/
+
