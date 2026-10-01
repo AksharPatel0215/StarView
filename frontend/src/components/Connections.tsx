@@ -18,7 +18,7 @@ export default function Connections({ graph, selected, busy, onOpen, onConnect }
       const exists = graph.documents.some(node => node.path === path);
       return <div className="connection-row" key={`${link.source}:${link.target}`}>
         <button className="document-link" disabled={!exists || busy} onClick={() => onOpen(path)} title={path}>{title(path)}{!exists && " (missing)"}<small>{path}</small></button>
-        <button className="remove-link" aria-label={`Remove connection from ${link.source} to ${link.target}`} disabled={busy} onClick={() => onConnect(link.source, link.target, true)}>×</button>
+        {link.kind === "inline" ? <span className="inline-badge" title="Edit the [[link]] in the source to remove this connection">inline</span> : <button className="remove-link" aria-label={`Remove connection from ${link.source} to ${link.target}`} disabled={busy} onClick={() => onConnect(link.source, link.target, true)}>×</button>}
       </div>;
     }) : <p>{backwards ? "No documents link here yet." : "No outgoing connections yet."}</p>;
   }

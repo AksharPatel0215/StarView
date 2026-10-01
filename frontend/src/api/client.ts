@@ -47,7 +47,7 @@ export const getPdfUrl = (name: string, path: string, version: number) =>
   `${API_URL}/api${projectPath(name)}/pdf/${filePath(path)}?v=${version}`;
 
 export type DocumentNode = { path: string; title: string; is_main: boolean };
-export type DocumentLink = { source: string; target: string; missing: boolean };
+export type DocumentLink = { source: string; target: string; missing: boolean; kind?: "inline" | "both" };
 export type KnowledgeGraph = { documents: DocumentNode[]; links: DocumentLink[] };
 export const getConnections = (name: string) => request<KnowledgeGraph>(`${projectPath(name)}/connections`);
 export const connectDocuments = (name: string, source: string, target: string, remove = false) => request<KnowledgeGraph>(`${projectPath(name)}/connections`, {

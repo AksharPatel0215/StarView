@@ -6,6 +6,7 @@ from pathlib import Path
 from threading import RLock
 
 from app.core.filesystem import FileSystem
+from app.core.wikilinks import find_links, resolve_link
 
 _LOCK = RLock()
 
@@ -95,4 +96,18 @@ class KnowledgeGraph:
         paths = {document["path"] for document in documents}
         with _LOCK:
             links = [{"source": link["source"], "target": link["target"], "missing": link["source"] not in paths or link["target"] not in paths} for link in self._read_links()]
+        inline = []
+        for document in documents:
+            content = (self.root / document["path"]).read_text(encoding="utf-8")
+            for match in find_links(content):
+                target = resolve_link(self.root, document["path"], match.group(1), sorted(paths))
+                entry = {"source": document["path"], "target": target or match.group(1).strip(), "missing": target is None, "kind": "inline"}
+                if entry not in inline:
+                    inline.append(entry)
+        for entry in inline:
+            existing = next((link for link in links if link["source"] == entry["source"] and link["target"] == entry["target"]), None)
+            if existing:
+                existing["kind"] = "both"
+            else:
+                links.append(entry)
         return {"documents": documents, "links": links}

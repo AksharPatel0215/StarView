@@ -65,3 +65,14 @@ Start the backend from `backend` with `uvicorn app.main:app --reload` in your Py
 
 From `backend`, install `requirements-test.txt` and run `python -m unittest discover -s tests -v`. From `frontend`, run `npm run build`.
 
+
+
+## Themed reader and keyword links
+
+Compiled and imported PDFs render directly in StarView with selectable text, workspace colors, and no browser PDF toolbar. Focus reading expands the document; Show editor restores the split view. Original colors lets you inspect the unthemed document without altering the PDF file. The local PDF.js worker is bundled with the frontend.
+
+Write `[[research]]` to link to research.tex or `[[research|research notes]]` to give the link a readable label. Relative paths and full project-relative paths are supported; use an explicit path when filenames are ambiguous. Cmd/Ctrl-click a link in the editor, use Cmd/Ctrl-Enter with the cursor on it, or click a Document links chip. After saving, these links also appear in the graph and backlinks. Edit the source to remove an inline connection.
+
+In a compiled preview, click a highlighted keyword to open its destination. Standalone documents are compiled and rendered automatically; included fragments open in the editor/Connections view. Missing or ambiguous links stay plain text in the PDF and are marked unresolved in the editor. Comments, verbatim/listing blocks, and inline verb examples do not create links.
+
+`[[...]]` is a StarView extension to LaTeX. StarView transforms it to hyperref links in a temporary project copy and keeps original sources unchanged. External LaTeX tools will display the bracket syntax until you replace it with standard LaTeX links. Projects without keyword links retain the normal build path. Install frontend dependencies with `npm install` after pulling this update.
