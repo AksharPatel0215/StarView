@@ -46,7 +46,7 @@ export async function compileProjectFile(name: string, path: string): Promise<st
 export const getPdfUrl = (name: string, path: string, version: number) =>
   `${API_URL}/api${projectPath(name)}/pdf/${filePath(path)}?v=${version}`;
 
-export type DocumentNode = { path: string; title: string; is_main: boolean };
+export type DocumentNode = { path: string; title: string; is_main: boolean; tags: string[] };
 export type DocumentLink = { source: string; target: string; missing: boolean; kind?: "inline" | "both" };
 export type KnowledgeGraph = { documents: DocumentNode[]; links: DocumentLink[] };
 export const getConnections = (name: string) => request<KnowledgeGraph>(`${projectPath(name)}/connections`);
@@ -54,3 +54,8 @@ export const connectDocuments = (name: string, source: string, target: string, r
   method: remove ? "DELETE" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source, target }),
 });
 export const getAssetUrl = (name: string, path: string) => `${API_URL}/api${projectPath(name)}/assets/${filePath(path)}`;
+
+export type FileLabels = Record<string, { folder: string; custom: string[] }>;
+export const chooseFolder = () => request<{ path: string | null }>("/projects/choose-folder", { method: "POST" });
+export const getTags = (name: string) => request<FileLabels>(`${projectPath(name)}/tags`);
+export const updateTags = (name: string, path: string, tags: string[]) => request<FileLabels>(`${projectPath(name)}/tags/${filePath(path)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tags }) });

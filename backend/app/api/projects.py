@@ -1,5 +1,5 @@
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
 from pydantic import BaseModel
@@ -8,6 +8,8 @@ from app.core.project_manager import ProjectManager
 from app.models import Project
 from app.core.latex import LatexCompiler
 from app.core.knowledge import KnowledgeGraph
+from app.core.tags import FileTags
+from app.core.folder_picker import choose_folder
 
 
 router = APIRouter(prefix="/api/projects")
@@ -19,6 +21,16 @@ project_manager = ProjectManager()
 class ProjectCreate(BaseModel):
     name: str
     root: str
+
+
+@router.post("/choose-folder")
+def pick_local_folder(request: Request):
+    if request.client and request.client.host not in {"127.0.0.1", "::1", "testclient"}:
+        raise HTTPException(status_code=403, detail="Open folders on the local computer")
+    try:
+        return {"path": choose_folder()}
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error))
 
 
 @router.get("/local-directories")
@@ -293,3 +305,32 @@ def get_project_asset(name: str, path: str):
     if not asset.is_file():
         raise HTTPException(status_code=404, detail="Image not found")
     return FileResponse(asset, headers={"X-Content-Type-Options": "nosniff"})
+
+
+class TagUpdate(BaseModel):
+    tags: list[str]
+
+
+def tags_for_project(name: str):
+    project = project_manager.get_project(name)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return FileTags(project.root)
+
+
+@router.get("/{name}/tags")
+def get_tags(name: str):
+    try:
+        return tags_for_project(name).all()
+    except (ValueError, OSError) as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@router.put("/{name}/tags/{path:path}")
+def update_tags(name: str, path: str, data: TagUpdate):
+    try:
+        return tags_for_project(name).update(path, data.tags)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
+    except (ValueError, OSError) as error:
+        raise HTTPException(status_code=400, detail=str(error))

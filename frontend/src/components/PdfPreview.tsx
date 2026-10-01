@@ -9,6 +9,7 @@ const LINK_PREFIX = "https://starview.invalid/open/";
 type Props = { url: string; onOpen: (path: string) => void };
 function Page({ pdf, number, width, themed, onOpen, onJump }: { pdf: PDFDocumentProxy; number: number; width: number; themed: boolean; onOpen: Props["onOpen"]; onJump: (page: number) => void }) {
   const article = useRef<HTMLElement>(null);
+  const [ready, setReady] = useState(false);
   const [visible, setVisible] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const text = useRef<HTMLDivElement>(null);
@@ -25,7 +26,7 @@ function Page({ pdf, number, width, themed, onOpen, onJump }: { pdf: PDFDocument
     let cancelled = false;
     let render: ReturnType<Awaited<ReturnType<PDFDocumentProxy["getPage"]>>["render"]> | undefined;
     let layer: TextLayer | undefined;
-    setError(""); setLinks([]);
+    setReady(false); setError(""); setLinks([]);
     void (async () => {
       const page = await pdf.getPage(number);
       if (cancelled || !canvas.current || !text.current) return;
@@ -69,11 +70,12 @@ function Page({ pdf, number, width, themed, onOpen, onJump }: { pdf: PDFDocument
         }
         return null;
       }));
-      if (!cancelled) setLinks(targets.filter(item => item !== null));
+      if (!cancelled) { setLinks(targets.filter(item => item !== null)); setReady(true); }
     })().catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : "Could not render this page"); });
     return () => { cancelled = true; render?.cancel(); layer?.cancel(); };
   }, [pdf, number, width, themed, visible]);
-  return <article ref={article} data-page={number} className={`pdf-page ${themed ? "themed" : "original"}`} aria-label={`Page ${number}`} style={{ width: visible ? size.width : width, height: visible ? size.height : width * 1.414 }}>
+  return <article ref={article} data-page={number} className={`pdf-page ${ready ? "page-ready" : "page-loading"} ${themed ? "themed" : "original"}`} aria-label={`Page ${number}`} style={{ width: visible ? size.width : width, height: visible ? size.height : width * 1.414 }}>
+    {!ready && !error && <div className="page-skeleton" role="status"><span className="loading-orbit"/><span>Rendering page {number}…</span></div>}
     <canvas ref={canvas} style={{ width: size.width, height: size.height }} aria-label={`Rendered PDF page ${number}`} />
     <div ref={text} className="textLayer" />
     <div className="pdf-links">{links.map(link => {
@@ -104,7 +106,7 @@ export default function PdfPreview({ url, onOpen }: Props) {
     observer.observe(target); return () => observer.disconnect();
   }, []);
   return <div className="pdf-reader" ref={container}>
-    {error ? <p className="error" role="alert">{error}</p> : !pdf ? <p className="reader-loading" role="status">Rendering document…</p> : <>
+    {error ? <p className="error" role="alert">{error}</p> : !pdf ? <div className="document-skeleton" role="status"><span className="loading-orbit"/>Opening document…<div className="skeleton-lines"/></div> : <>
       <div className="reader-caption"><span>{pdf.numPages} {pdf.numPages === 1 ? "page" : "pages"}</span><button aria-pressed={!themed} onClick={() => setThemed(!themed)}>{themed ? "Original colors" : "Match workspace"}</button></div>
       {Array.from({ length: pdf.numPages }, (_, index) => <Page key={index} pdf={pdf} number={index + 1} width={width} themed={themed} onOpen={onOpen} onJump={page => container.current?.querySelector(`[data-page="${page}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" })} />)}
     </>}

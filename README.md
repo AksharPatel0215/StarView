@@ -76,3 +76,11 @@ Write `[[research]]` to link to research.tex or `[[research|research notes]]` to
 In a compiled preview, click a highlighted keyword to open its destination. Standalone documents are compiled and rendered automatically; included fragments open in the editor/Connections view. Missing or ambiguous links stay plain text in the PDF and are marked unresolved in the editor. Comments, verbatim/listing blocks, and inline verb examples do not create links.
 
 `[[...]]` is a StarView extension to LaTeX. StarView transforms it to hyperref links in a temporary project copy and keeps original sources unchanged. External LaTeX tools will display the bracket syntax until you replace it with standard LaTeX links. Projects without keyword links retain the normal build path. Install frontend dependencies with `npm install` after pulling this update.
+
+### Folder picking, labels, and motion
+
+Open Folder launches the local computer's native folder chooser (macOS Finder, Windows folder dialog, or Tk on Linux). Cancellation leaves the workspace unchanged. Browse folders is available as a fallback. This opens the folder in place; files are not uploaded.
+
+Every file receives its immediate containing folder as an automatic tag; root-level files use the project folder name. Add multiple custom tags beneath the filename, and remove them with ×. Labels persist in `.starview/tags.json`. Filter by tag narrows both the explorer and the document graph.
+
+Opening a standalone LaTeX file selects it for compilation and displays its newly built PDF. Chapter fragments retain the selected main document. Loading pages stay workspace-colored until rendering finishes, then fade in. Graph hover effects and flowing active connections respect reduced-motion preferences.

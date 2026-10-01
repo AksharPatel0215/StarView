@@ -28,18 +28,18 @@ export default function Connections({ graph, selected, busy, onOpen, onConnect }
       <defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="17" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7" fill="#796aa4" /></marker></defs>
       {graph.links.filter(link => !link.missing).map(link => {
         const a = positions.get(link.source), b = positions.get(link.target); if (!a || !b) return null;
-        return <line key={`${link.source}:${link.target}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={selected === link.source || selected === link.target ? "#b09beb" : "#4f506b"} strokeWidth="1.5" markerEnd="url(#arrow)" />;
+        return <line className={selected === link.source || selected === link.target ? "graph-edge connected" : "graph-edge"} key={`${link.source}:${link.target}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={selected === link.source || selected === link.target ? "#b09beb" : "#4f506b"} strokeWidth="1.5" markerEnd="url(#arrow)" />;
       })}
       {graph.documents.map(node => {
         const pos = positions.get(node.path)!;
-        return <g key={node.path} role="button" tabIndex={busy ? -1 : 0} aria-label={`Open ${node.title}`} onClick={() => { if (!busy) onOpen(node.path); }} onKeyDown={e => { if (!busy && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(node.path); } }} style={{ cursor: busy ? "default" : "pointer" }}>
-          <title>{node.path}</title><circle cx={pos.x} cy={pos.y} r="24" fill="transparent" /><circle cx={pos.x} cy={pos.y} r={node.path === selected ? 11 : 7} fill={node.path === selected ? "#c1adff" : "#746599"} stroke="#252332" strokeWidth="4" />
+        return <g className={`graph-node${node.path === selected ? " selected" : ""}`} key={node.path} role="button" tabIndex={busy ? -1 : 0} aria-label={`Open ${node.title}`} onClick={() => { if (!busy) onOpen(node.path); }} onKeyDown={e => { if (!busy && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(node.path); } }} style={{ cursor: busy ? "default" : "pointer" }}>
+          <title>{node.path} · {node.tags.join(", ")}</title><circle cx={pos.x} cy={pos.y} r="24" fill="transparent" /><circle cx={pos.x} cy={pos.y} r={node.path === selected ? 11 : 7} fill={node.path === selected ? "#c1adff" : "#746599"} stroke="#252332" strokeWidth="4" />
           <text x={pos.x} y={pos.y + 25} textAnchor="middle" fill={node.path === selected ? "#e0d6ff" : "#a7b1c7"} fontSize="10">{node.title.length > 23 ? node.title.slice(0, 21) + "…" : node.title}</text>
         </g>;
       })}
     </svg> : <p>Open a folder with LaTeX documents to build your map.</p>}
     {document ? <><h2 className="connection-title">{document.title}</h2><p className="project-root">{document.path}</p>
-      <h3>Connect a document</h3>
+      <div className="graph-tags">{document.tags.map(tag => <span className="tag-chip" key={tag}>{tag}</span>)}</div><h3>Connect a document</h3>
       <form className="connect-form" onSubmit={e => { e.preventDefault(); const next = choices.find(node => node.path === target); if (next) { onConnect(selected, next.path); setTarget(""); } }}>
         <select aria-label="Document to connect" value={choices.some(node => node.path === target) ? target : ""} disabled={busy || choices.length === 0} onChange={e => setTarget(e.target.value)}><option value="">Choose a document…</option>{choices.map(node => <option key={node.path} value={node.path}>{node.title} — {node.path}</option>)}</select>
         <button className="primary" disabled={busy || !choices.some(node => node.path === target)}>Link</button>

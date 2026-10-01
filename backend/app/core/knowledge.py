@@ -6,6 +6,7 @@ from pathlib import Path
 from threading import RLock
 
 from app.core.filesystem import FileSystem
+from app.core.tags import FileTags
 from app.core.wikilinks import find_links, resolve_link
 
 _LOCK = RLock()
@@ -75,6 +76,7 @@ class KnowledgeGraph:
 
     def graph(self) -> dict:
         documents = []
+        tags = FileTags(self.root).all()
         for relative in FileSystem(self.root).list_files():
             if relative.suffix.lower() != ".tex" or any(part.startswith(".") for part in relative.parts):
                 continue
@@ -89,6 +91,7 @@ class KnowledgeGraph:
             title = re.search(r"\\title(?:\[[^\]]*\])?\s*\{([^{}]*)\}", content)
             documents.append({
                 "path": relative.as_posix(),
+                "tags": list(dict.fromkeys([tags[relative.as_posix()]["folder"], *tags[relative.as_posix()]["custom"]])),
                 "title": title.group(1).strip() if title else relative.stem.replace("_", " "),
                 "is_main": bool(re.search(r"\\documentclass(?:\[[^\]]*\])?\s*\{", content)),
             })
