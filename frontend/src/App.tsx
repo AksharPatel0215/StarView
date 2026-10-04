@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { chooseFolder, getTags, updateTags, browseDirectories, compileProjectFile, getPdfUrl, getConnections, connectDocuments, getAssetUrl, getProjectFile, getProjectFiles, getProjects, openProject, saveProjectFile } from "./api/client";
+import { labelConnection, setGraphColor, chooseFolder, getTags, updateTags, browseDirectories, compileProjectFile, getPdfUrl, getConnections, connectDocuments, getAssetUrl, getProjectFile, getProjectFiles, getProjects, openProject, saveProjectFile } from "./api/client";
 import type { FileLabels, DirectoryListing, Project, KnowledgeGraph } from "./api/client";
 import FileTree from "./components/FileTree";
 import Connections from "./components/Connections";
@@ -11,6 +11,7 @@ const message = (error: unknown) => error instanceof Error ? error.message : "So
 
 function App() {
   const [tags, setTags] = useState<FileLabels>({});
+  const [fileSearch, setFileSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("");
   const [tagDraft, setTagDraft] = useState("");
   const [rendering, setRendering] = useState(false);
@@ -47,7 +48,7 @@ function App() {
 
   useEffect(() => {
     let active = true;
-    setTags({}); setTagFilter("");
+    setTags({}); setTagFilter(""); setFileSearch("");
     if (project) getTags(project.name).then(value => { if (active) setTags(value); }).catch(e => setError(message(e)));
     return () => { active = false; };
   }, [project]);
@@ -83,6 +84,22 @@ function App() {
       const [nextFiles, nextGraph] = await Promise.all([getProjectFiles(project.name), getConnections(project.name)]);
       setFiles(nextFiles); loadGraph(nextGraph); setTags(await getTags(project.name));
     } catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function labelEdge(source: string, target: string, labels: string[], color: string | null) {
+    if (!project || busy) return;
+    setBusy(true); setError("");
+    try { setGraph(await labelConnection(project.name, source, target, labels, color)); setStatus("Relationship saved"); }
+    catch (e) { setError(message(e)); }
+    finally { setBusy(false); }
+  }
+
+  async function colorGraph(kind: "tag" | "relationship" | "node", key: string, color: string | null) {
+    if (!project || busy) return;
+    setBusy(true); setError("");
+    try { setGraph(await setGraphColor(project.name, kind, key, color)); setStatus("Graph color saved"); }
+    catch (e) { setError(message(e)); }
     finally { setBusy(false); }
   }
 
@@ -238,8 +255,8 @@ function App() {
   const activePath = selectedFile || assetPath || pdfPath;
   const activeTags = tags[activePath];
   const allTags = [...new Set(Object.values(tags).flatMap(value => [value.folder, ...value.custom]))].sort();
-  const visibleFiles = tagFilter ? files.filter(file => tags[file] && [tags[file].folder, ...tags[file].custom].includes(tagFilter)) : files;
-  const filteredGraph = tagFilter ? { documents: graph.documents.filter(node => node.tags.includes(tagFilter)), links: graph.links.filter(link => graph.documents.find(node => node.path === link.source)?.tags.includes(tagFilter) && graph.documents.find(node => node.path === link.target)?.tags.includes(tagFilter)) } : graph;
+  const visibleFiles = files.filter(file => (!tagFilter || (tags[file] && [tags[file].folder, ...tags[file].custom].includes(tagFilter))) && `${file} ${tags[file]?.custom.join(" ") || ""}`.toLowerCase().includes(fileSearch.trim().toLowerCase()));
+  const filteredGraph = tagFilter ? { ...graph, documents: graph.documents.filter(node => node.tags.includes(tagFilter)), links: graph.links.filter(link => graph.documents.find(node => node.path === link.source)?.tags.includes(tagFilter) && graph.documents.find(node => node.path === link.target)?.tags.includes(tagFilter)) } : graph;
   const documents = visibleFiles.filter(file => /\.tex$/i.test(file));
   const resources = visibleFiles.filter(file => /\.(bib|bst|sty|cls|png|jpe?g|gif|webp|svg|eps)$/i.test(file));
   const pdfs = visibleFiles.filter(file => /\.pdf$/i.test(file) && !documents.some(source => source.slice(0, -4) === file.slice(0, -4) || source.split("/").pop()?.slice(0, -4) === file.slice(0, -4)));
@@ -258,6 +275,7 @@ function App() {
       <aside className="sidebar"><h2>{project?.name || "Your workspace"}</h2>
         {project && <><p className="project-root" title={project.root}>{project.root}</p>
           <div className="sidebar-tools"><button disabled={busy || loadingFile} onClick={() => void refresh()}>↻ Refresh</button><button aria-pressed={showAllFiles} onClick={() => setShowAllFiles(!showAllFiles)}>{showAllFiles ? "Hide other files" : "Show all files"}</button></div>
+          <input className="file-search" type="search" aria-label="Search files" placeholder="Search files or tags…" value={fileSearch} onChange={e => setFileSearch(e.target.value)} />
           <label className="tag-filter">Filter by tag<select aria-label="Filter by tag" value={tagFilter} onChange={e => setTagFilter(e.target.value)}><option value="">All files</option>{allTags.map(tag => <option key={tag}>{tag}</option>)}</select></label><button className="browse-fallback" onClick={() => { setShowBrowser(true); void browse(project.root); }}>Browse folders…</button>
           <p className="section-label">Documents · {documents.length}</p>
           <FileTree files={documents} selectedFile={selectedFile} onFileSelect={file => void selectFile(file)} />
@@ -299,7 +317,7 @@ function App() {
         </footer>
       </section>
       <section className="preview">{rendering && <div className="render-overlay" role="status"><span className="loading-orbit"/>Rendering your document…</div>}<div className="panel-header"><button className={panel === "connections" ? "active" : ""} aria-pressed={panel === "connections"} onClick={() => setPanel("connections")}>Connections</button><button className={panel === "preview" ? "active" : ""} aria-pressed={panel === "preview"} onClick={() => setPanel("preview")}>Preview</button>{panel === "preview" && pdfPath && !assetPath && <button className="reading-toggle" aria-pressed={readingMode} onClick={() => setReadingMode(!readingMode)}>{readingMode ? "Show editor" : "Focus reading"}</button>}</div>
-        {panel === "connections" ? <Connections graph={filteredGraph} selected={selectedFile} busy={busy || loadingFile} onOpen={file => void selectFile(file)} onConnect={(source, target, remove) => void connect(source, target, remove)} />
+        {panel === "connections" ? <Connections key={project?.name || "empty"} graph={filteredGraph} selected={selectedFile} busy={busy || loadingFile} onOpen={file => void selectFile(file)} onConnect={(source, target, remove) => void connect(source, target, remove)} onLabel={labelEdge} onColor={colorGraph} />
           : project && assetPath ? <img className="asset-preview" src={getAssetUrl(project.name, assetPath)} alt={assetPath} onError={() => setError("Could not load this image")} />
           : project && pdfPath ? <Suspense fallback={<p className="reader-loading" role="status">Loading reader…</p>}><PdfPreview url={getPdfUrl(project.name, pdfPath, pdfVersion)} onOpen={path => void followDocument(path, true)} /></Suspense>
           : <div className="empty-state"><div className="empty-icon" aria-hidden="true">▤</div><h2>Your document, rendered</h2><p>Compile your main document to see its PDF here. Images and imported PDFs open here too.</p></div>}

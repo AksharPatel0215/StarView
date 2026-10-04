@@ -47,8 +47,8 @@ export const getPdfUrl = (name: string, path: string, version: number) =>
   `${API_URL}/api${projectPath(name)}/pdf/${filePath(path)}?v=${version}`;
 
 export type DocumentNode = { path: string; title: string; is_main: boolean; tags: string[] };
-export type DocumentLink = { source: string; target: string; missing: boolean; kind?: "inline" | "both" };
-export type KnowledgeGraph = { documents: DocumentNode[]; links: DocumentLink[] };
+export type DocumentLink = { source: string; target: string; missing: boolean; kind?: "inline" | "both"; labels?: string[]; color?: string | null };
+export type KnowledgeGraph = { documents: DocumentNode[]; links: DocumentLink[]; styles?: GraphStyles };
 export const getConnections = (name: string) => request<KnowledgeGraph>(`${projectPath(name)}/connections`);
 export const connectDocuments = (name: string, source: string, target: string, remove = false) => request<KnowledgeGraph>(`${projectPath(name)}/connections`, {
   method: remove ? "DELETE" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source, target }),
@@ -59,3 +59,7 @@ export type FileLabels = Record<string, { folder: string; custom: string[] }>;
 export const chooseFolder = () => request<{ path: string | null }>("/projects/choose-folder", { method: "POST" });
 export const getTags = (name: string) => request<FileLabels>(`${projectPath(name)}/tags`);
 export const updateTags = (name: string, path: string, tags: string[]) => request<FileLabels>(`${projectPath(name)}/tags/${filePath(path)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tags }) });
+
+export type GraphStyles = { tag_colors: Record<string, string>; relationship_colors: Record<string, string>; node_colors: Record<string, string> };
+export const labelConnection = (name: string, source: string, target: string, labels: string[], color: string | null) => request<KnowledgeGraph>(`${projectPath(name)}/connections/labels`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source, target, labels, color }) });
+export const setGraphColor = (name: string, kind: "tag" | "relationship" | "node", key: string, color: string | null) => request<KnowledgeGraph>(`${projectPath(name)}/graph/colors`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, key, color }) });

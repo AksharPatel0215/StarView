@@ -334,3 +334,36 @@ def update_tags(name: str, path: str, data: TagUpdate):
         raise HTTPException(status_code=404, detail="File not found")
     except (ValueError, OSError) as error:
         raise HTTPException(status_code=400, detail=str(error))
+
+
+class RelationshipLabels(BaseModel):
+    source: str
+    target: str
+    labels: list[str]
+    color: str | None = None
+
+
+class GraphColor(BaseModel):
+    kind: str
+    key: str
+    color: str | None = None
+
+
+@router.put("/{name}/connections/labels")
+def label_connection(name: str, data: RelationshipLabels):
+    try:
+        return graph_for_project(name).label_edge(data.source, data.target, data.labels, data.color)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except (ValueError, OSError) as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@router.put("/{name}/graph/colors")
+def set_graph_color(name: str, data: GraphColor):
+    try:
+        return graph_for_project(name).set_color(data.kind, data.key, data.color)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except (ValueError, OSError) as error:
+        raise HTTPException(status_code=400, detail=str(error))

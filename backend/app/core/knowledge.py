@@ -7,6 +7,7 @@ from threading import RLock
 
 from app.core.filesystem import FileSystem
 from app.core.tags import FileTags
+from app.core.graph_style import GraphStyle
 from app.core.wikilinks import find_links, resolve_link
 
 _LOCK = RLock()
@@ -75,6 +76,7 @@ class KnowledgeGraph:
         return self.graph()
 
     def graph(self) -> dict:
+        style = GraphStyle(self.root).read()
         documents = []
         tags = FileTags(self.root).all()
         for relative in FileSystem(self.root).list_files():
@@ -113,4 +115,22 @@ class KnowledgeGraph:
                 existing["kind"] = "both"
             else:
                 links.append(entry)
-        return {"documents": documents, "links": links}
+        overrides = {(edge["source"], edge["target"]): edge for edge in style["edges"]}
+        for link in links:
+            if metadata := overrides.get((link["source"], link["target"])):
+                link["labels"] = metadata["labels"]
+                link["color"] = metadata.get("color")
+        return {"documents": documents, "links": links, "styles": {key: style[key] for key in ("tag_colors", "relationship_colors", "node_colors")}}
+
+    def label_edge(self, source: str, target: str, labels: list[str], color: str | None = None) -> dict:
+        source, target = self._document(source), self._document(target)
+        if not any(link["source"] == source and link["target"] == target for link in self.graph()["links"]):
+            raise FileNotFoundError("Connection not found")
+        GraphStyle(self.root).edge(source, target, labels, color)
+        return self.graph()
+
+    def set_color(self, kind: str, key: str, color: str | None) -> dict:
+        if kind == "node":
+            key = self._document(key)
+        GraphStyle(self.root).color(kind, key, color)
+        return self.graph()

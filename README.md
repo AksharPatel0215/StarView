@@ -84,3 +84,13 @@ Open Folder launches the local computer's native folder chooser (macOS Finder, W
 Every file receives its immediate containing folder as an automatic tag; root-level files use the project folder name. Add multiple custom tags beneath the filename, and remove them with ×. Labels persist in `.starview/tags.json`. Filter by tag narrows both the explorer and the document graph.
 
 Opening a standalone LaTeX file selects it for compilation and displays its newly built PDF. Chapter fragments retain the selected main document. Loading pages stay workspace-colored until rendering finishes, then fade in. Graph hover effects and flowing active connections respect reduced-motion preferences.
+
+### Graph exploration
+
+Expand the graph for a floating force layout with folder clusters, node separation, and curved directed connections. Drag nodes to pin them temporarily, drag the background to pan, and scroll to zoom. Fit restores the whole graph; Reflow releases pins and rearranges it. Pause stops motion, and reduced-motion preferences start it paused. Hover or focus a node to see its full title, path, tags, and connection count. Click a node to open its document.
+
+Search titles, paths, or tags; filter by tag or relationship; focus on one- or two-hop neighbors of the selected document; and hide isolated nodes. File search is also available in the explorer.
+
+Click a connection to edit multiple relationship labels such as references and examples, and choose its color. Colors & legend sets colors for tags, relationship categories, or individual documents using the workspace palette. Auto restores automatic coloring. Labels and colors persist in .starview/graph.json without changing LaTeX sources. Inline connections default to references; manual connections default to related.
+
+From frontend, run npm test for layout and neighborhood tests, npm run lint, and npm run build. Data nodes and dashboard hubs are reserved for the next phase.
