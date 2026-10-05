@@ -137,3 +137,9 @@ This repository does not ship provider credentials. Register your own web OAuth 
 In StarView choose **+ Data node**, select the provider, then **Connect account**. After consent returns you to StarView, reopen the project and data-node picker to choose your resource. Each provider currently connects one account at a time. Tokens remain on the local backend; provider failures and revoked permissions require reconnecting. End-to-end live provider access requires valid app registrations and user consent; automated tests use mocked provider responses.
 
 The editor and PDF workers are bundled locally; the UI no longer fetches its editor runtime or fonts from a CDN. API responses use a restrictive content policy so directly opening an imported SVG cannot execute scripts in the app origin. The frontend pins a patched DOMPurify and routes Monaco's embedded sanitizer import to it. Dependency audits and security tests are useful checks, not a guarantee or a substitute for an independent security review.
+
+### Creating and linking documents
+
+Click **+ New document**, choose a folder, and enter a name. The .tex extension is added automatically; a name such as Examples/first-example creates a subfolder. StarView creates a standalone LaTeX template and opens it immediately. Existing files cannot be overwritten through this action.
+
+In the LaTeX editor, type **[[** to suggest known documents. Search by title or path, choose with the arrow keys, and press Enter to insert the complete link. Paths are relative to the current document so duplicate filenames in different folders remain unambiguous. Suggestions update when documents are created or the workspace is refreshed. Comments, verbatim blocks, and link aliases do not trigger suggestions.

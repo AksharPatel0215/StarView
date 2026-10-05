@@ -109,6 +109,27 @@ def get_project_files(name: str):
 
     return [str(path) for path in files]
 
+class NewDocument(BaseModel):
+    path: str
+    content: str
+
+
+@router.post("/{name}/files", status_code=201)
+def create_project_file(name: str, data: NewDocument):
+    project = project_manager.get_project(name)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        path = FileSystem(project.root).create_file(data.path, data.content)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="A file with that name already exists. Choose another name.")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Choose a visible .tex file inside the workspace")
+    except OSError:
+        raise HTTPException(status_code=400, detail="Could not create this document. Check its folder and name.")
+    return {"path": path, "status": "created"}
+
+
 @router.get("/{name}/files/{path:path}")
 def read_project_file(name: str, path: str):
     project = project_manager.get_project(name)

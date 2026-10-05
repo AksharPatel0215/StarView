@@ -90,3 +90,7 @@ export const disconnectAccount=(provider:string)=>request<AccountConnection[]>(`
 export const getResources=(provider:string,folder='',cursor='')=>request<ResourceListing>(`/accounts/${provider}/resources?folder=${encodeURIComponent(folder)}&cursor=${encodeURIComponent(cursor)}`);
 export const getResourcePreview=(name:string,id:string)=>request<ResourcePreview>(`${projectPath(name)}/workspace/preview?id=${encodeURIComponent(id)}`);
 export const resourcePdfUrl=(name:string,id:string)=>`${API_URL}/api${projectPath(name)}/workspace/preview?id=${encodeURIComponent(id)}&pdf=true`;
+
+export const createProjectFile = (name: string, path: string, content: string) => request<{path:string}>(`${projectPath(name)}/files`, {
+  method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({path,content}),
+});

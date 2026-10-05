@@ -59,6 +59,24 @@ class ProjectFileTests(unittest.TestCase):
         self.assertEqual(self.source.read_text(), "original")
 
 
+    def test_create_nested_document_without_overwriting(self):
+        response = self.client.post('/api/projects/Test%20Project/files', json={'path':'Examples/new.tex','content':'new notes'})
+        self.assertEqual(response.status_code,201)
+        self.assertEqual((self.root/'Examples/new.tex').read_text(),'new notes')
+        response = self.client.post('/api/projects/Test%20Project/files', json={'path':'Examples/new.tex','content':'overwrite'})
+        self.assertEqual(response.status_code,409)
+        self.assertEqual((self.root/'Examples/new.tex').read_text(),'new notes')
+
+    def test_create_rejects_escape_hidden_and_non_tex_paths(self):
+        for path in ['../escape.tex','/tmp/escape.tex','.starview/hidden.tex','notes.txt','']:
+            response=self.client.post('/api/projects/Test%20Project/files',json={'path':path,'content':'notes'})
+            self.assertEqual(response.status_code,400,path)
+        with tempfile.TemporaryDirectory() as outside:
+            (self.root/'external').symlink_to(outside,target_is_directory=True)
+            response=self.client.post('/api/projects/Test%20Project/files',json={'path':'external/escape.tex','content':'notes'})
+            self.assertEqual(response.status_code,400)
+            self.assertFalse((Path(outside)/'escape.tex').exists())
+
 class LocalBrowsingTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()

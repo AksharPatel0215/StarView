@@ -255,3 +255,5 @@ button:active { transform: translateY(1px); }
 .resource-cards{margin-top:20px;}.resource-cards>div{display:flex;flex-wrap:wrap;gap:10px;}.resource-cards button{text-align:left;font-size:12px;flex:1;min-width:180px;padding:16px;background:#282438;}.resource-cards small{display:block;font-size:9px;color:#a69bbd;margin-top:8px;}.node-links{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid #30394a;}.node-links span{font-size:10px;color:#8c9db7;}.node-links button{font-size:10px;padding:5px 9px;background:#272334;color:#c7b9e8;}
 
 .account-notice{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 24px;font-size:12px;background:#25332f;color:#b1d7cb;margin:0;}.account-notice button{padding:3px 8px;background:transparent;border:0;}
+.new-document input,.new-document select {width:100%;box-sizing:border-box;margin:8px 0 18px;}
+.new-document label {display:block;font-size:13px;font-weight:600;}
