@@ -8,8 +8,8 @@ type Props = { graph: KnowledgeGraph; selected: string; busy: boolean; onOpen: (
 export default function Connections({ graph, selected, busy, onOpen, onConnect, onLabel, onColor }: Props) {
   const [edge, setEdge] = useState<DocumentLink | null>(null);
   const [target, setTarget] = useState("");
-  const document = graph.documents.find(node => node.path === selected);
-  const choices = graph.documents.filter(node => node.path !== selected && !graph.links.some(link => link.source === selected && link.target === node.path));
+  const document = graph.documents.find(node => node.path === selected && (!node.kind||node.kind==='document'));
+  const choices = graph.documents.filter(node => (!node.kind||node.kind==='document') && node.path !== selected && !graph.links.some(link => link.source === selected && link.target === node.path));
   const outgoing = graph.links.filter(link => link.source === selected);
   const incoming = graph.links.filter(link => link.target === selected);
   const title = (path: string) => graph.documents.find(node => node.path === path)?.title || path;
@@ -18,7 +18,7 @@ export default function Connections({ graph, selected, busy, onOpen, onConnect, 
       const path = backwards ? link.source : link.target;
       const exists = graph.documents.some(node => node.path === path);
       return <div className="connection-row" key={`${link.source}:${link.target}`}>
-        <button className="document-link" disabled={!exists || busy} onClick={() => onOpen(path)} title={path}>{title(path)}{!exists && " (missing)"}<small>{path}</small></button>
+        <button className="document-link" disabled={!exists || busy} onClick={() => onOpen(path)} title={path}>{title(path)}{!exists && " (missing)"}<small>{path.startsWith('@node/')?'Workspace node':path}</small></button>
         <button className="edge-label-button" disabled={busy} title="Edit relationship labels and color" style={{ color: edgeColor(link, graph.styles) }} onClick={() => setEdge(link)}>{edgeLabels(link).join(" · ")}</button>
         {link.kind === "inline" ? <span className="inline-badge" title="Edit the [[link]] in the source to remove this connection">inline</span> : <button className="remove-link" aria-label={`Remove connection from ${link.source} to ${link.target}`} disabled={busy} onClick={() => onConnect(link.source, link.target, true)}>×</button>}
       </div>;
@@ -34,7 +34,7 @@ export default function Connections({ graph, selected, busy, onOpen, onConnect, 
       </form>
       <h3>Links from this document <span>{outgoing.length}</span></h3>{links(outgoing)}
       <h3>Backlinks <span>{incoming.length}</span></h3>{links(incoming, true)}
-    </> : <p>Select a LaTeX document to connect it with another document.</p>}
+    </> : <p>Select a document to manage its links. Dashboard and data connections can be changed with Edit node & connections.</p>}
     <p className="connections-hint">Connections describe relationships between your documents. They stay separate from the LaTeX build.</p>
   </div>;
 }

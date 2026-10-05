@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
-from fastapi.testclient import TestClient
+from support import TestClient
 from app.api.projects import project_manager
 from app.core.knowledge import KnowledgeGraph
 from app.main import app

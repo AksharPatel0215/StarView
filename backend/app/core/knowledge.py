@@ -8,6 +8,7 @@ from threading import RLock
 from app.core.filesystem import FileSystem
 from app.core.tags import FileTags
 from app.core.graph_style import GraphStyle
+from app.core.nodes import WorkspaceNodes
 from app.core.wikilinks import find_links, resolve_link
 
 _LOCK = RLock()
@@ -115,6 +116,13 @@ class KnowledgeGraph:
                 existing["kind"] = "both"
             else:
                 links.append(entry)
+        workspace_nodes = WorkspaceNodes(self.root).read()['nodes']
+        for node in workspace_nodes:
+            documents.append({'path': node['id'], 'title': node['title'], 'is_main': False, 'tags': [node['kind'].title()], 'kind': node['kind']})
+        all_paths = {document['path'] for document in documents}
+        for node in workspace_nodes:
+            for target in node['targets']:
+                links.append({'source': node['id'], 'target': target, 'missing': target not in all_paths, 'kind': 'workspace', 'labels': ['summarizes' if node['kind'] == 'dashboard' else 'supports']})
         overrides = {(edge["source"], edge["target"]): edge for edge in style["edges"]}
         for link in links:
             if metadata := overrides.get((link["source"], link["target"])):
@@ -123,7 +131,7 @@ class KnowledgeGraph:
         return {"documents": documents, "links": links, "styles": {key: style[key] for key in ("tag_colors", "relationship_colors", "node_colors")}}
 
     def label_edge(self, source: str, target: str, labels: list[str], color: str | None = None) -> dict:
-        source, target = self._document(source), self._document(target)
+        source, target = self._node(source), self._node(target)
         if not any(link["source"] == source and link["target"] == target for link in self.graph()["links"]):
             raise FileNotFoundError("Connection not found")
         GraphStyle(self.root).edge(source, target, labels, color)
@@ -131,6 +139,11 @@ class KnowledgeGraph:
 
     def set_color(self, kind: str, key: str, color: str | None) -> dict:
         if kind == "node":
-            key = self._document(key)
+            key = self._node(key)
         GraphStyle(self.root).color(kind, key, color)
         return self.graph()
+
+    def _node(self, path):
+        if path.startswith('@node/'):
+            return WorkspaceNodes(self.root).get(path)['id']
+        return self._document(path)

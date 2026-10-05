@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from fastapi.testclient import TestClient
+from support import TestClient
 from app.main import app
 from app.core.tags import FileTags
 from app.core.folder_picker import choose_folder

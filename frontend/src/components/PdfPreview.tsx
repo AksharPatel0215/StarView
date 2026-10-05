@@ -93,7 +93,7 @@ export default function PdfPreview({ url, onOpen }: Props) {
   const [error, setError] = useState("");
   const [themed, setThemed] = useState(true);
   useEffect(() => {
-    const task = getDocument({ url });
+    const task = getDocument({ url, withCredentials: true });
     let active = true;
     setPdf(null); setError("");
     task.promise.then(document => { if (active) setPdf(document); }).catch(e => { if (active) setError(e instanceof Error ? e.message : "Could not load this PDF"); });

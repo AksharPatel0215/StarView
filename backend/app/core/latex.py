@@ -56,7 +56,7 @@ class LatexCompiler:
                     shutil.copy2(root / path, destination)
             try:
                 result = subprocess.run(
-                    [latexmk, "-pdf", "-interaction=nonstopmode", "-halt-on-error",
+                    [latexmk, "-norc", "-no-shell-escape", "-pdf", "-interaction=nonstopmode", "-halt-on-error",
                      f"-outdir={build}", f"./{relative.as_posix()}"],
                     cwd=stage, capture_output=True, text=True, env=env, timeout=120,
                 )
