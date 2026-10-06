@@ -1,89 +1,22 @@
-type FileTreeProps = {
-  files: string[];
-  onFileSelect: (file: string) => void;
-};
-
-
-type TreeNode = {
-  name: string;
-  path: string;
-  children: TreeNode[];
-  isFile: boolean;
-};
-
-
-function buildTree(files: string[]): TreeNode[]
-{
-  const root: TreeNode[] = [];
-
-  for (const file of files)
-  {
-    const parts = file.split("/");
-    let current = root;
-    let currentPath = "";
-
-    for (let i = 0; i < parts.length; i++)
-    {
-      const part = parts[i];
-
-      currentPath = currentPath
-        ? `${currentPath}/${part}`
-        : part;
-
-      let node = current.find((item) => item.name === part);
-
-      if (!node)
-      {
-        node = {
-          name: part,
-          path: currentPath,
-          children: [],
-          isFile: i === parts.length - 1,
-        };
-
-        current.push(node);
-      }
-
+type Props = { files: string[]; selectedFile?: string; onFileSelect: (file: string) => void };
+type Node = { name: string; path: string; children: Node[]; isFile: boolean };
+function build(files: string[]): Node[] {
+  const root: Node[] = [];
+  for (const file of files) {
+    const parts = file.split("/"); let current = root; let path = "";
+    parts.forEach((part, index) => {
+      path = path ? `${path}/${part}` : part;
+      let node = current.find(item => item.name === part);
+      if (!node) { node = { name: part, path, children: [], isFile: index === parts.length - 1 }; current.push(node); }
       current = node.children;
-    }
+    });
   }
-
   return root;
 }
-
-
-function renderTree(
-  nodes: TreeNode[],
-  onFileSelect: (file: string) => void
-)
-{
-  return (
-    <ul className="file-tree">
-      {nodes.map((node) => (
-        <li key={node.path}>
-          {node.isFile ? (
-            <button onClick={() => onFileSelect(node.path)}>
-              {node.name}
-            </button>
-          ) : (
-            `${node.name}/`
-          )}
-
-          {node.children.length > 0 &&
-            renderTree(node.children, onFileSelect)}
-        </li>
-      ))}
-    </ul>
-  );
+function Branch({ nodes, selectedFile, onFileSelect }: { nodes: Node[] } & Omit<Props, "files">) {
+  return <ul className="file-tree">{[...nodes].sort((a, b) => Number(a.isFile) - Number(b.isFile) || a.name.localeCompare(b.name)).map(node => <li key={node.path}>
+    {node.isFile ? <button className={selectedFile === node.path ? "active" : ""} title={node.path} onClick={() => onFileSelect(node.path)}><span className="file-icon" aria-hidden="true">{node.path.endsWith(".tex") ? "≡" : "◇"}</span>{node.name}</button>
+      : <details open><summary>{node.name}</summary><Branch nodes={node.children} selectedFile={selectedFile} onFileSelect={onFileSelect} /></details>}
+  </li>)}</ul>;
 }
-
-
-function FileTree({ files, onFileSelect }: FileTreeProps)
-{
-  const tree = buildTree(files);
-
-  return renderTree(tree, onFileSelect);
-}
-
-
-export default FileTree;
+export default function FileTree({ files, ...props }: Props) { return <Branch nodes={build(files)} {...props} />; }

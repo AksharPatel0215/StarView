@@ -2,3 +2,15 @@
 # Python bytecode
 __pycache__/
 *.py[cod]
+
+# LaTeX output is local; knowledge connections can be versioned.
+**/.starview/build/
+
+
+# Local account credentials and cloud tokens
+.env
+.env.*
+!.env.example
+*.sqlite3
+*.sqlite3-*
+token.key
