@@ -143,3 +143,9 @@ The editor and PDF workers are bundled locally; the UI no longer fetches its edi
 Click **+ New document**, choose a folder, and enter a name. The .tex extension is added automatically; a name such as Examples/first-example creates a subfolder. StarView creates a standalone LaTeX template and opens it immediately. Existing files cannot be overwritten through this action.
 
 In the LaTeX editor, type **[[** to suggest known documents. Search by title or path, choose with the arrow keys, and press Enter to insert the complete link. Paths are relative to the current document so duplicate filenames in different folders remain unambiguous. Suggestions update when documents are created or the workspace is refreshed. Comments, verbatim blocks, and link aliases do not trigger suggestions.
+
+### A quieter writing workspace
+
+The main toolbar keeps New document and Graph within reach. The Workspace menu holds folder opening, the overview, and dashboard/data-node creation; View controls panel visibility and reset. Files remain searchable, with tags and maintenance actions under Filter. References, PDFs, document tags, link lists, and compile settings expand when needed.
+
+Create a file with the toolbar button, the + beside Documents, or Alt+N. The creation dialog focuses the name and keeps the location selector in a disclosure. New documents compile themselves by default. The inspector starts hidden for new layouts; compiling or opening an image/PDF reveals the preview. Existing saved layouts are preserved.
