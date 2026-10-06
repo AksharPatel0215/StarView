@@ -149,3 +149,9 @@ In the LaTeX editor, type **[[** to suggest known documents. Search by title or 
 The main toolbar keeps New document and Graph within reach. The Workspace menu holds folder opening, the overview, and dashboard/data-node creation; View controls panel visibility and reset. Files remain searchable, with tags and maintenance actions under Filter. References, PDFs, document tags, link lists, and compile settings expand when needed.
 
 Create a file with the toolbar button, the + beside Documents, or Alt+N. The creation dialog focuses the name and keeps the location selector in a disclosure. New documents compile themselves by default. The inspector starts hidden for new layouts; compiling or opening an image/PDF reveals the preview. Existing saved layouts are preserved.
+
+### Appearance and settings
+
+Settings offers five readable palettes: the original StarView, light Paper, cool Slate, green Forest, and plum Dusk. The interface, locally bundled editor, and themed PDF pages change together. Original PDF colors remain available in the reader. Preferences persist in this browser and also apply to the login screen.
+
+Adjust editor text size and line wrapping, reduce motion, restore appearance defaults, or reset the workspace layout. Reduced motion pauses the floating graph and disables UI animation; operating-system reduced-motion preferences remain respected. Account/password and provider connections retain their existing dedicated controls.

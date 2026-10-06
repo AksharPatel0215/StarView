@@ -2,6 +2,8 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 const Editor = lazy(() => import("./components/LocalEditor"));
 import { labelConnection, setGraphColor, chooseFolder, getTags, updateTags, browseDirectories, compileProjectFile, getPdfUrl, getConnections, connectDocuments, getAssetUrl, getProjectFile, getProjectFiles, getProjects, openProject, saveProjectFile } from "./api/client";
 import type { FileLabels, DirectoryListing, Project, KnowledgeGraph } from "./api/client";
+import Settings from "./components/Settings";
+import {usePreferences} from "./preferences";
 import CompactMenu from "./components/CompactMenu";
 import NewDocument from "./components/NewDocument";
 import { createProjectFile } from "./api/client";
@@ -20,6 +22,8 @@ const PdfPreview = lazy(() => import("./components/PdfPreview"));
 const message = (error: unknown) => error instanceof Error ? error.message : "Something went wrong";
 
 function App() {
+  const {preferences}=usePreferences();
+  const [settingsOpen,setSettingsOpen]=useState(false);
   const [accountNotice,setAccountNotice]=useState(()=>{const result=new URLSearchParams(window.location.search).get('account');return result==='connected'?'Account connected. Add a data node to choose a resource.':result==='failed'?'Account connection was not completed. Try again, or check the provider setup.':'';});
   useEffect(()=>{if(new URLSearchParams(window.location.search).has('account')){const url=new URL(window.location.href);url.searchParams.delete('account');window.history.replaceState(null,'',url.pathname+url.search+url.hash);}},[]);
   const [nodes,setNodes] = useState<WorkspaceNode[]>([]);
@@ -323,7 +327,7 @@ function App() {
       }}><option value="" disabled>Select a project</option>{projects.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}</select>}
       <button className="primary" disabled={!project||busy||loadingFile} title="Create a document (Alt+N)" onClick={()=>setNewDocument(true)}>+ New document</button>
       <button disabled={!project} aria-pressed={layout.preview&&panel==='connections'} onClick={()=>{setPanel('connections');setLayout(current=>({...current,preview:!(current.preview&&panel==='connections')}));}}>Graph</button>
-      <CompactMenu label="View">{(['sidebar','editor','preview'] as const).map(key=><button key={key} aria-pressed={layout[key]} onClick={()=>togglePanel(key)}>{layout[key]?'✓ ':''}{key==='sidebar'?'Files':key==='editor'?'Editor':'Preview & connections'}</button>)}<button onClick={()=>setLayout({sidebar:true,editor:true,preview:false,sidebarWidth:250,previewWidth:430})}>Reset layout</button></CompactMenu>
+      <button onClick={()=>setSettingsOpen(true)}>Settings</button><CompactMenu label="View">{(['sidebar','editor','preview'] as const).map(key=><button key={key} aria-pressed={layout[key]} onClick={()=>togglePanel(key)}>{layout[key]?'✓ ':''}{key==='sidebar'?'Files':key==='editor'?'Editor':'Preview & connections'}</button>)}<button onClick={()=>setLayout({sidebar:true,editor:true,preview:false,sidebarWidth:250,previewWidth:430})}>Reset layout</button></CompactMenu>
       <CompactMenu label="Workspace"><button disabled={busy||loadingFile} onClick={()=>void pickFolder()}>Open folder…</button><button disabled={!project} onClick={()=>{setActiveNode(null);setCenter('dashboard');setLayout(current=>({...current,editor:true}));}}>Overview</button><button disabled={!project} onClick={()=>setNodeEditor({kind:'dashboard',node:null})}>New dashboard</button><button disabled={!project} onClick={()=>setNodeEditor({kind:'data',node:null})}>Connect a data node</button></CompactMenu>
     </header>
     {accountNotice&&<p className="account-notice" role="status">{accountNotice}<button aria-label="Dismiss account notice" onClick={()=>setAccountNotice('')}>×</button></p>}
@@ -370,7 +374,7 @@ function App() {
               if (event.target.position && (event.event.ctrlKey || event.event.metaKey)) followAt(event.target.position);
             });
             editor.addAction({ id: "starview.follow-link", label: "Open document link", keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: () => { const position = editor.getPosition(); if (position) followAt(position); } });
-          }} beforeMount={monaco => monaco.editor.defineTheme("starview", { base: "vs-dark", inherit: true, rules: [], colors: { "editor.background": "#191d26", "editorLineNumber.foreground": "#515c70", "editor.lineHighlightBackground": "#202631", "editor.selectionBackground": "#41365c" } })} value={fileContent} options={{ readOnly: busy || loadingFile, fontSize: 13, lineHeight: 23, minimap: { enabled: false }, padding: { top: 14 }, scrollBeyondLastLine: false, wordWrap: "on" }} onChange={value => setFileContent(value ?? "")} /></Suspense></div>
+          }} beforeMount={monaco => monaco.editor.defineTheme("starview", { base: "vs-dark", inherit: true, rules: [], colors: { "editor.background": "#191d26", "editorLineNumber.foreground": "#515c70", "editor.lineHighlightBackground": "#202631", "editor.selectionBackground": "#41365c" } })} value={fileContent} options={{ readOnly: busy || loadingFile, fontSize: preferences.fontSize, lineHeight: Math.round(preferences.fontSize*1.75), minimap: { enabled: false }, padding: { top: 14 }, scrollBeyondLastLine: false, wordWrap: preferences.wordWrap?"on":"off" }} onChange={value => setFileContent(value ?? "")} /></Suspense></div>
           : <div className="empty-state"><div className="empty-icon" aria-hidden="true">✧</div><h2>{assetPath ? "Image preview" : "Make room for your ideas"}</h2><p>{assetPath ? "Your image is open in the preview panel." : "Choose a document to write, or explore how your LaTeX documents connect."}</p>{!project ? <button className="primary" onClick={() => void pickFolder()}>Open a local folder</button> : <button className="primary" onClick={()=>setNewDocument(true)}>Create a document</button>}</div>}
         {selectedFile.toLowerCase().endsWith(".tex") && liveLinks.length>0 && <details className="document-details link-details"><summary>Links <span>{liveLinks.length}</span></summary><div className="inline-links">{liveLinks.length ? liveLinks.map((link, index) => <button key={index} disabled={busy || loadingFile || !link.target} title={link.target || "Document not found or ambiguous"} onClick={() => { if (link.target) void followDocument(link.target); }}>{link.label}{!link.target && " (unresolved)"}</button>) : <small>Type [[ to find a document · Enter to link · ⌘/Ctrl-click to follow</small>}</div></details>}
         <footer className="editor-status"><span role="status">{loadingFile ? "Opening file…" : status || (dirty ? "Unsaved changes" : "Ready")}</span>
@@ -386,6 +390,7 @@ function App() {
           : <div className="empty-state"><div className="empty-icon" aria-hidden="true">▤</div><h2>Your document, rendered</h2><p>Compile your main document to see its PDF here. Images and imported PDFs open here too.</p></div>}
       </section>
     </main>
+    {settingsOpen&&<Settings onClose={()=>setSettingsOpen(false)} onResetLayout={()=>setLayout({sidebar:true,editor:true,preview:false,sidebarWidth:250,previewWidth:430})}/>}
     {newDocument&&project&&<NewDocument files={files} folder={selectedFile.includes('/')?selectedFile.slice(0,selectedFile.lastIndexOf('/')):''} busy={busy} onSave={createDocument} onClose={()=>{if(!busy)setNewDocument(false);}}/>}
     {nodeEditor&&project&&<NodeManager key={nodeEditor.node?.id||nodeEditor.kind} node={nodeEditor.node} kind={nodeEditor.kind} graph={graph} onSave={saveNode} onClose={()=>setNodeEditor(null)}/>}
     {showBrowser && <div className="modal-backdrop"><section className="folder-browser" role="dialog" aria-modal="true" aria-labelledby="folder-title">

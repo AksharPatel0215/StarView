@@ -1,3 +1,4 @@
+import { usePreferences } from "../preferences";
 import { useEffect, useRef, useState } from "react";
 import { getDocument, GlobalWorkerOptions, TextLayer } from "pdfjs-dist";
 import type { PDFDocumentProxy } from "pdfjs-dist";
@@ -8,6 +9,7 @@ const LINK_PREFIX = "https://starview.invalid/open/";
 
 type Props = { url: string; onOpen: (path: string) => void };
 function Page({ pdf, number, width, themed, onOpen, onJump }: { pdf: PDFDocumentProxy; number: number; width: number; themed: boolean; onOpen: Props["onOpen"]; onJump: (page: number) => void }) {
+  const {preferences}=usePreferences();
   const article = useRef<HTMLElement>(null);
   const [ready, setReady] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -73,7 +75,7 @@ function Page({ pdf, number, width, themed, onOpen, onJump }: { pdf: PDFDocument
       if (!cancelled) { setLinks(targets.filter(item => item !== null)); setReady(true); }
     })().catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : "Could not render this page"); });
     return () => { cancelled = true; render?.cancel(); layer?.cancel(); };
-  }, [pdf, number, width, themed, visible]);
+  }, [pdf, number, width, themed, visible, preferences.theme]);
   return <article ref={article} data-page={number} className={`pdf-page ${ready ? "page-ready" : "page-loading"} ${themed ? "themed" : "original"}`} aria-label={`Page ${number}`} style={{ width: visible ? size.width : width, height: visible ? size.height : width * 1.414 }}>
     {!ready && !error && <div className="page-skeleton" role="status"><span className="loading-orbit"/><span>Rendering page {number}…</span></div>}
     <canvas ref={canvas} style={{ width: size.width, height: size.height }} aria-label={`Rendered PDF page ${number}`} />

@@ -1,3 +1,4 @@
+import {usePreferences} from '../preferences';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { DocumentLink, KnowledgeGraph } from '../api/client';
 import { createLayout, fitLayout, neighborhood, stepLayout } from '../graphLayout';
@@ -19,7 +20,8 @@ export default function GraphExplorer({ graph, selected, busy, onOpen, onLabel, 
   const [hideIsolated, setHideIsolated] = useState(false);
   const [labels, setLabels] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [paused, setPaused] = useState(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const {preferences}=usePreferences();
+  const [paused, setPaused] = useState(() => (document.documentElement.dataset.motion==='reduced'||window.matchMedia('(prefers-reduced-motion: reduce)').matches));
   const [spacing, setSpacing] = useState(1);
   const [hover, setHover] = useState('');
   const [hoverEdge, setHoverEdge] = useState('');
@@ -80,8 +82,8 @@ export default function GraphExplorer({ graph, selected, busy, onOpen, onLabel, 
   }, []);
   useEffect(() => {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const change = () => { if (media.matches) setPaused(true); };
-    media.addEventListener('change', change); return () => media.removeEventListener('change', change);
+    const change = () => { if (media.matches||document.documentElement.dataset.motion==='reduced') setPaused(true); };
+    media.addEventListener('change', change);window.addEventListener('starview-preferences-change',change);change(); return () => {media.removeEventListener('change', change);window.removeEventListener('starview-preferences-change',change);};
   }, []);
   useEffect(() => {
     const key = (event: KeyboardEvent) => { if (event.key === 'Escape') { setExpanded(false); onEdge(null); setHover(''); } };
@@ -199,7 +201,7 @@ export default function GraphExplorer({ graph, selected, busy, onOpen, onLabel, 
         </g>
       </svg>
       {!filtered.documents.length && <div className="graph-empty">No nodes match this view.<button onClick={resetFilters}>Clear graph filters</button></div>}
-      <div className="graph-navigation"><button aria-label="Zoom in" onClick={() => zoom(1.25)}>+</button><span>{Math.round(camera.scale * 100)}%</span><button aria-label="Zoom out" onClick={() => zoom(.8)}>−</button><button onClick={fit}>Fit</button><button aria-pressed={paused} onClick={() => { heat.current = .4; setPaused(!paused); }}>{paused ? 'Resume motion' : 'Pause motion'}</button><button title="Release dragged pins and rebuild the layout" onClick={() => setReflow(value => value + 1)}>Reflow</button></div>
+      <div className="graph-navigation"><button aria-label="Zoom in" onClick={() => zoom(1.25)}>+</button><span>{Math.round(camera.scale * 100)}%</span><button aria-label="Zoom out" onClick={() => zoom(.8)}>−</button><button onClick={fit}>Fit</button><button aria-pressed={paused} disabled={preferences.reduceMotion} title={preferences.reduceMotion?'Disable Reduce motion in Settings to animate the graph':undefined} onClick={() => { heat.current = .4; setPaused(!paused); }}>{paused ? 'Resume motion' : 'Pause motion'}</button><button title="Release dragged pins and rebuild the layout" onClick={() => setReflow(value => value + 1)}>Reflow</button></div>
       {hoveredNode && !drag.current && <div className="graph-tooltip" role="status"><strong>{hoveredNode.title}</strong><span>{hoveredNode.kind==='dashboard'?'Dashboard hub':hoveredNode.kind==='data'?'Connected resource':hoveredNode.path}</span><small>{hoveredNode.tags.join(' · ')} · {graph.links.filter(link => link.source === hover || link.target === hover).length} connections</small></div>}
       {hoverLink && !hoveredNode && <div className="graph-tooltip"><strong>{edgeLabels(hoverLink).join(' · ')}</strong><span>{displayPath(hoverLink.source)} → {displayPath(hoverLink.target)}</span><small>Click to edit relationship</small></div>}
     </div>

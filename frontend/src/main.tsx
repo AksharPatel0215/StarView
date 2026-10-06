@@ -1,3 +1,4 @@
+import PreferencesProvider from "./preferences";
 import AuthGate from "./components/AuthGate";
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -6,7 +7,7 @@ import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthGate><App /></AuthGate>
+    <PreferencesProvider><AuthGate><App /></AuthGate></PreferencesProvider>
   </StrictMode>,
 )
 
