@@ -155,3 +155,9 @@ Create a file with the toolbar button, the + beside Documents, or Alt+N. The cre
 Settings offers five readable palettes: the original StarView, light Paper, cool Slate, green Forest, and plum Dusk. The interface, locally bundled editor, and themed PDF pages change together. Original PDF colors remain available in the reader. Preferences persist in this browser and also apply to the login screen.
 
 Adjust editor text size and line wrapping, reduce motion, restore appearance defaults, or reset the workspace layout. Reduced motion pauses the floating graph and disables UI animation; operating-system reduced-motion preferences remain respected. Account/password and provider connections retain their existing dedicated controls.
+
+### Moving files and workspace trash
+
+Open a document or image and choose File → Move / rename. Choose an existing destination folder or type a new folder. The extension stays the same and existing files cannot be overwritten. Save edits before using file actions. Moves update known keyword links, root-relative LaTeX input/include/includegraphics references, custom tags, manual edges, graph styling, and dashboard/data-node targets. Comments and literal blocks remain unchanged; external URLs and unresolved links are left alone. Recompile to refresh PDF links after a move.
+
+File → Move to trash asks for confirmation and stores the file under the hidden .starview/trash folder. References remain, so they show as unresolved until restoration. Workspace → Trash restores a file to its original path without overwriting a new file there. Trash does not expire automatically; no permanent-delete action is exposed. Folder moves and arbitrary external LaTeX macros are not supported.

@@ -94,3 +94,8 @@ export const resourcePdfUrl=(name:string,id:string)=>`${API_URL}/api${projectPat
 export const createProjectFile = (name: string, path: string, content: string) => request<{path:string}>(`${projectPath(name)}/files`, {
   method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({path,content}),
 });
+export type TrashItem={id:string;path:string;deleted_at:string};
+export const moveFile=(name:string,source:string,target:string)=>request<{path:string}>(`${projectPath(name)}/file-actions/move`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source,target})});
+export const deleteFile=(name:string,source:string)=>request<TrashItem>(`${projectPath(name)}/file-actions/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source})});
+export const getTrash=(name:string)=>request<TrashItem[]>(`${projectPath(name)}/trash`);
+export const restoreFile=(name:string,id:string)=>request<{path:string}>(`${projectPath(name)}/trash/${id}/restore`,{method:'POST'});

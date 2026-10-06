@@ -388,3 +388,45 @@ def set_graph_color(name: str, data: GraphColor):
         raise HTTPException(status_code=404, detail=str(error))
     except (ValueError, OSError) as error:
         raise HTTPException(status_code=400, detail=str(error))
+
+
+class FileAction(BaseModel):
+    source: str
+    target: str | None = None
+
+
+def file_action(name, operation, *args):
+    from app.core.file_actions import FileActions
+    project = project_manager.get_project(name)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    try:
+        return getattr(FileActions(project.root), operation)(*args)
+    except FileExistsError:
+        raise HTTPException(status_code=409, detail="A file already exists at that location. Choose another name.")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File or trash item not found")
+    except (ValueError, OSError) as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+
+@router.post("/{name}/file-actions/move")
+def move_file(name: str, data: FileAction):
+    if data.target is None:
+        raise HTTPException(status_code=400, detail="Choose a destination")
+    return file_action(name, "move", data.source, data.target)
+
+
+@router.post("/{name}/file-actions/delete")
+def delete_file(name: str, data: FileAction):
+    return file_action(name, "delete", data.source)
+
+
+@router.get("/{name}/trash")
+def list_trash(name: str):
+    return file_action(name, "list_trash")
+
+
+@router.post("/{name}/trash/{token}/restore")
+def restore_file(name: str, token: str):
+    return file_action(name, "restore", token)

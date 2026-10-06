@@ -2,6 +2,9 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 const Editor = lazy(() => import("./components/LocalEditor"));
 import { labelConnection, setGraphColor, chooseFolder, getTags, updateTags, browseDirectories, compileProjectFile, getPdfUrl, getConnections, connectDocuments, getAssetUrl, getProjectFile, getProjectFiles, getProjects, openProject, saveProjectFile } from "./api/client";
 import type { FileLabels, DirectoryListing, Project, KnowledgeGraph } from "./api/client";
+import FileActionsDialog from "./components/FileActionsDialog";
+import Trash from "./components/Trash";
+import {moveFile,deleteFile} from "./api/client";
 import Settings from "./components/Settings";
 import {usePreferences} from "./preferences";
 import CompactMenu from "./components/CompactMenu";
@@ -23,6 +26,8 @@ const message = (error: unknown) => error instanceof Error ? error.message : "So
 
 function App() {
   const {preferences}=usePreferences();
+  const [fileAction,setFileAction]=useState<{path:string;mode:"move"|"delete"}|null>(null);
+  const [trashOpen,setTrashOpen]=useState(false);
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [accountNotice,setAccountNotice]=useState(()=>{const result=new URLSearchParams(window.location.search).get('account');return result==='connected'?'Account connected. Add a data node to choose a resource.':result==='failed'?'Account connection was not completed. Try again, or check the provider setup.':'';});
   useEffect(()=>{if(new URLSearchParams(window.location.search).has('account')){const url=new URL(window.location.href);url.searchParams.delete('account');window.history.replaceState(null,'',url.pathname+url.search+url.hash);}},[]);
@@ -201,6 +206,24 @@ function App() {
     finally { setBusy(false); }
   }
 
+  async function actOnFile(target:string) {
+    if(!project||!fileAction)return;
+    if(dirty)throw new Error('Save your changes before moving or deleting this file.');
+    const source=fileAction.path;
+    if(fileAction.mode==='move'){
+      const next=await moveFile(project.name,source,target);
+      if(selectedFile===source){const content=await getProjectFile(project.name,next.path);setSelectedFile(next.path);setFileContent(content);setSavedContent(content);}
+      if(assetPath===source)setAssetPath(next.path);
+      setTabs(current=>current.map(path=>path===source?next.path:path));
+      if(buildDocument===source)setBuildDocument(next.path);
+      setStatus('File moved. Links updated.');
+    }else{
+      await deleteFile(project.name,source);setTabs(current=>current.filter(path=>path!==source));
+      setSelectedFile('');setFileContent('');setSavedContent('');setAssetPath('');setStatus('Moved to trash. Restore it from Workspace → Trash.');
+    }
+    setPdfPath('');await refresh();
+  }
+
   async function createDocument(path:string, content:string) {
     if(!project || busy || loadingFile || !canLeave())return;
     setBusy(true);setError("");
@@ -309,6 +332,7 @@ function App() {
     finally { setBusy(false); setRendering(false); }
   }
 
+  const actionPath=selectedFile||assetPath||(pdfPath&&!pdfPath.startsWith(".starview/")?pdfPath:"");
   const activePath = selectedFile || assetPath || pdfPath;
   const activeTags = tags[activePath];
   const allTags = [...new Set(Object.values(tags).flatMap(value => [value.folder, ...value.custom]))].sort();
@@ -328,7 +352,7 @@ function App() {
       <button className="primary" disabled={!project||busy||loadingFile} title="Create a document (Alt+N)" onClick={()=>setNewDocument(true)}>+ New document</button>
       <button disabled={!project} aria-pressed={layout.preview&&panel==='connections'} onClick={()=>{setPanel('connections');setLayout(current=>({...current,preview:!(current.preview&&panel==='connections')}));}}>Graph</button>
       <button onClick={()=>setSettingsOpen(true)}>Settings</button><CompactMenu label="View">{(['sidebar','editor','preview'] as const).map(key=><button key={key} aria-pressed={layout[key]} onClick={()=>togglePanel(key)}>{layout[key]?'✓ ':''}{key==='sidebar'?'Files':key==='editor'?'Editor':'Preview & connections'}</button>)}<button onClick={()=>setLayout({sidebar:true,editor:true,preview:false,sidebarWidth:250,previewWidth:430})}>Reset layout</button></CompactMenu>
-      <CompactMenu label="Workspace"><button disabled={busy||loadingFile} onClick={()=>void pickFolder()}>Open folder…</button><button disabled={!project} onClick={()=>{setActiveNode(null);setCenter('dashboard');setLayout(current=>({...current,editor:true}));}}>Overview</button><button disabled={!project} onClick={()=>setNodeEditor({kind:'dashboard',node:null})}>New dashboard</button><button disabled={!project} onClick={()=>setNodeEditor({kind:'data',node:null})}>Connect a data node</button></CompactMenu>
+      <CompactMenu label="Workspace"><button disabled={!project} onClick={()=>setTrashOpen(true)}>Trash</button><button disabled={busy||loadingFile} onClick={()=>void pickFolder()}>Open folder…</button><button disabled={!project} onClick={()=>{setActiveNode(null);setCenter('dashboard');setLayout(current=>({...current,editor:true}));}}>Overview</button><button disabled={!project} onClick={()=>setNodeEditor({kind:'dashboard',node:null})}>New dashboard</button><button disabled={!project} onClick={()=>setNodeEditor({kind:'data',node:null})}>Connect a data node</button></CompactMenu>
     </header>
     {accountNotice&&<p className="account-notice" role="status">{accountNotice}<button aria-label="Dismiss account notice" onClick={()=>setAccountNotice('')}>×</button></p>}
     {error && <p className="error" role="alert">{error}</p>}
@@ -352,8 +376,8 @@ function App() {
       <section className="editor" style={{display:layout.editor?undefined:'none'}}>
         {project&&center!=='editor'?<><div className="node-workspace-actions">{selectedFile&&<button onClick={()=>{setCenter('editor');setActiveNode(null);}}>Back to {selectedFile.split('/').pop()}</button>}{activeNode&&<button onClick={()=>setNodeEditor({kind:activeNode.kind,node:activeNode})}>Edit node & connections</button>}</div>{center==='data'&&activeNode?<DataViewer project={project.name} node={activeNode} connections={graph.documents.filter(item=>activeNode.targets.includes(item.path))} onOpen={openNode}/>:<Dashboard project={project.name} node={activeNode} refresh={statsVersion} resources={graph.documents.filter(item=>item.kind==='data'&&(!activeNode||activeNode.targets.includes(item.path)))} onOpen={path=>void selectFile(path)}/>}</>:<>
         {tabs.length>0&&<div className="document-tabs" role="tablist" aria-label="Open files">{tabs.map(path=><div key={path}><button role="tab" aria-selected={selectedFile===path||assetPath===path||pdfPath===path} onClick={()=>void selectFile(path)} title={path}>{path.split('/').pop()}</button><button aria-label={`Close tab ${path}`} disabled={busy||loadingFile} onClick={()=>{if(path===selectedFile||path===assetPath||path===pdfPath){if(!canLeave())return;setSelectedFile('');setAssetPath('');setPdfPath('');setFileContent('');setSavedContent('');}setTabs(current=>current.filter(item=>item!==path));}}>×</button></div>)}</div>}
-        <div className="editor-header"><h2 title={selectedFile||assetPath}>{(selectedFile || assetPath).split('/').pop() || "Document workspace"}{dirty ? " •" : ""}</h2>
-          {selectedFile && <div className="editor-actions"><button disabled={busy || loadingFile} onClick={() => void save()}>Save</button>
+        <div className="editor-header"><h2 title={actionPath}>{(actionPath).split('/').pop() || "Document workspace"}{dirty ? " •" : ""}</h2>
+          {actionPath && <div className="editor-actions"><CompactMenu label="File"><button disabled={busy||loadingFile||dirty} onClick={()=>setFileAction({path:actionPath,mode:"move"})}>Move / rename…</button><button disabled={busy||loadingFile||dirty} onClick={()=>setFileAction({path:actionPath,mode:"delete"})}>Move to trash…</button>{dirty&&<small>Save changes to move or delete.</small>}</CompactMenu>{selectedFile&&<button disabled={busy || loadingFile} onClick={() => void save()}>Save</button>}
             {selectedFile.toLowerCase().endsWith(".tex") && <button className="primary" disabled={busy || loadingFile} onClick={() => void save(true)}>{busy ? "Working…" : "Compile ↗"}</button>}
           </div>}
         </div>
@@ -390,6 +414,8 @@ function App() {
           : <div className="empty-state"><div className="empty-icon" aria-hidden="true">▤</div><h2>Your document, rendered</h2><p>Compile your main document to see its PDF here. Images and imported PDFs open here too.</p></div>}
       </section>
     </main>
+    {fileAction&&<FileActionsDialog path={fileAction.path} files={files} mode={fileAction.mode} onSave={actOnFile} onClose={()=>setFileAction(null)}/>}
+    {trashOpen&&project&&<Trash project={project.name} onRestore={refresh} onClose={()=>setTrashOpen(false)}/>}
     {settingsOpen&&<Settings onClose={()=>setSettingsOpen(false)} onResetLayout={()=>setLayout({sidebar:true,editor:true,preview:false,sidebarWidth:250,previewWidth:430})}/>}
     {newDocument&&project&&<NewDocument files={files} folder={selectedFile.includes('/')?selectedFile.slice(0,selectedFile.lastIndexOf('/')):''} busy={busy} onSave={createDocument} onClose={()=>{if(!busy)setNewDocument(false);}}/>}
     {nodeEditor&&project&&<NodeManager key={nodeEditor.node?.id||nodeEditor.kind} node={nodeEditor.node} kind={nodeEditor.kind} graph={graph} onSave={saveNode} onClose={()=>setNodeEditor(null)}/>}
