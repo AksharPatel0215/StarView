@@ -161,3 +161,46 @@ Adjust editor text size and line wrapping, reduce motion, restore appearance def
 Open a document or image and choose File → Move / rename. Choose an existing destination folder or type a new folder. The extension stays the same and existing files cannot be overwritten. Save edits before using file actions. Moves update known keyword links, root-relative LaTeX input/include/includegraphics references, custom tags, manual edges, graph styling, and dashboard/data-node targets. Comments and literal blocks remain unchanged; external URLs and unresolved links are left alone. Recompile to refresh PDF links after a move.
 
 File → Move to trash asks for confirmation and stores the file under the hidden .starview/trash folder. References remain, so they show as unresolved until restoration. Workspace → Trash restores a file to its original path without overwriting a new file there. Trash does not expire automatically; no permanent-delete action is exposed. Folder moves and arbitrary external LaTeX macros are not supported.
+
+## Tool windows and local notes agent
+
+Use **Add tool** to open LaTeX, Agent, or Graph. There is at most one of each and three windows total. Each has a close button; drag a divider or use the arrow keys while it is focused to resize neighboring windows. Closing every window leaves a centered **Add tool** button. The LaTeX tool toggles between **Read** and **Write**; tools do not change into one another. Window choices, proportions and the LaTeX view persist in this browser. Closing the LaTeX window preserves the selected document and continues saving pending edits. Opening a file restores that tool if needed. Graph backgrounds and hover behavior remain active when other windows are opened or closed.
+
+**Agent** opens the local notes assistant. Ollama must be running at `http://127.0.0.1:11434` with a local chat model installed. StarView lists installed models and starts in Automatic mode. It keeps `deepseek-r1:7b` when available for answer quality; override the preferred model with `STARVIEW_OLLAMA_MODEL`, or explicitly set a separate question model with `STARVIEW_OLLAMA_FAST_MODEL`. You can also choose an installed model directly. Models marked as cloud/remote are excluded. No paid API or new package is required. Model quality and speed depend on the model and hardware; a smaller model is faster but may produce weaker mathematics or invalid drafts.
+
+The assistant retrieves current `.tex` passages using BM25-style lexical ranking and expands retrieval with graph neighbors. It includes source paths and line ranges plus directed relationships in its context. Retrieval refreshes on each question, so no stale embedding index is left after an edit or move. This is local passage-and-graph RAG, not embedding similarity search. PDFs, cloud resources, and images are not indexed by this initial notes agent.
+
+Ask for an explanation, a new standalone note, an edit, or labeled connection changes. Explanations show clickable source files and expandable retrieved passages. Proposed changes are saved under `.starview/agent/proposals/` and do not modify notes or graph metadata. Choose **Review**, inspect the current and proposed source, edit the draft or relationship labels, then **Approve & apply** or **Reject**. Pending reviews survive closing the assistant. Approval checks file and graph fingerprints, refuses stale proposals, and rolls back the batch if a write fails. The assistant cannot delete files. Source-based inline connections must be changed in the note source; removing only a manual connection cannot remove an inline link. Approved/rejected proposals remain as a local review record.
+
+### RAG MCP server
+
+StarView also exposes the same workspace-scoped retrieval and proposal tools to MCP clients over stdio. Tools: `search_notes`, `read_note`, `concept_neighbors`, and `propose_changes`. There is deliberately no approval/apply tool: all proposed writes require review in the StarView UI. No network port or unauthenticated HTTP MCP endpoint is opened.
+
+From the repository root, run:
+
+```sh
+backend/.venv/bin/python backend/starview_mcp.py --workspace /absolute/path/to/notes
+```
+
+Example MCP client configuration (replace paths with your checkout and workspace):
+
+```json
+{
+  "mcpServers": {
+    "starview-notes": {
+      "command": "/absolute/path/to/StarView/backend/.venv/bin/python",
+      "args": ["/absolute/path/to/StarView/backend/starview_mcp.py", "--workspace", "/absolute/path/to/notes"]
+    }
+  }
+}
+```
+
+The server supports MCP initialize, ping, tools/list, and tools/call over newline-delimited JSON-RPC stdio. It negotiates the 2025-06-18 protocol and recognizes the older 2024-11-05/2025-03-26 versions. Give it only the workspace you intend to expose. Note contents are untrusted reference material, and the agent system instructions explicitly prevent treating them as commands.
+
+Implementation references: [Ollama chat API](https://docs.ollama.com/api/chat), [structured outputs](https://docs.ollama.com/capabilities/structured-outputs), [MCP tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools), and [stdio transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports).
+
+### Faster basic questions
+
+Basic questions use a compact answer-and-citations schema, focused passages, and a smaller context budget. They do not carry the note-edit planner or the entire document catalog. For the installed DeepSeek R1 models, a direct-answer prompt seeds a completed reasoning block to skip a long internal reasoning prelude for basic questions. Proofs, detailed comparisons, and edits retain the normal chat/reasoning route and full output budget. The model stays loaded for ten minutes between requests. Answer footers show the actual model and elapsed time.
+
+Retrieval omits LaTeX preambles and prefers matching section headings, so compact prompts contain relevant note content rather than formatting setup. No answer cache is used; current note content is retrieved on each request. Local measurements on one definition question improved from about 59 seconds to 4–11 seconds with the same 7B model. Speed depends on question, hardware, model load and prompt cache. No new model download is needed. Models can still make mathematical errors; use the cited notes to check their claims, and review every proposed edit before applying it.

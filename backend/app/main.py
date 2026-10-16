@@ -45,6 +45,8 @@ def create_app(data_dir: Path | None = None):
     app.include_router(projects_router)
     from app.api.workspace import router as workspace_router
     from app.api.accounts import router as accounts_router
+    from app.api.agent import router as agent_router
+    app.include_router(agent_router)
     app.include_router(workspace_router)
     app.include_router(accounts_router)
 

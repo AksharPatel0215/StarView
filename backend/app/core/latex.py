@@ -5,12 +5,24 @@ import shutil
 import subprocess
 from pathlib import Path
 from contextlib import nullcontext
+from threading import Lock
+
+_BUILD_GUARD=Lock()
+_BUILD_LOCKS={}
 from app.core.filesystem import FileSystem
 from app.core.wikilinks import transform, find_links, active_text
 
 
 class LatexCompiler:
     def compile(self, project_root: Path, tex_path: str) -> dict:
+        # A live Read pane may request a new build while an older one finishes.
+        key=str((project_root / tex_path).resolve())
+        with _BUILD_GUARD:
+            lock=_BUILD_LOCKS.setdefault(key,Lock())
+        with lock:
+            return self._compile(project_root,tex_path)
+
+    def _compile(self, project_root: Path, tex_path: str) -> dict:
         root = project_root.resolve()
         source = (root / tex_path).resolve()
         relative = source.relative_to(root)
