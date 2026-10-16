@@ -1,22 +1,12 @@
-type Props = { files: string[]; selectedFile?: string; onFileSelect: (file: string) => void };
-type Node = { name: string; path: string; children: Node[]; isFile: boolean };
-function build(files: string[]): Node[] {
-  const root: Node[] = [];
-  for (const file of files) {
-    const parts = file.split("/"); let current = root; let path = "";
-    parts.forEach((part, index) => {
-      path = path ? `${path}/${part}` : part;
-      let node = current.find(item => item.name === part);
-      if (!node) { node = { name: part, path, children: [], isFile: index === parts.length - 1 }; current.push(node); }
-      current = node.children;
-    });
-  }
-  return root;
+import {useState} from 'react';
+type Props={files:string[];selectedFile?:string;onFileSelect:(file:string)=>void;onAction?:(file:string,mode:'move'|'delete')=>void;onMove?:(file:string,folder:string)=>void;disabled?:boolean};
+type Node={name:string;path:string;children:Node[];isFile:boolean};
+function build(files:string[]){const root:Node[]=[];for(const file of files){let children=root,path='';file.split('/').forEach((name,index,parts)=>{path=path?`${path}/${name}`:name;let node=children.find(item=>item.name===name);if(!node){node={name,path,children:[],isFile:index===parts.length-1};children.push(node);}children=node.children;});}return root;}
+export default function FileTree(props:Props){
+ const [actions,setActions]=useState('');const [drop,setDrop]=useState('');
+ function branch(nodes:Node[]){return <ul className="file-tree">{[...nodes].sort((a,b)=>Number(a.isFile)-Number(b.isFile)||a.name.localeCompare(b.name)).map(node=><li key={node.path}>{node.isFile?<>
+  <button className={`file-row ${props.selectedFile===node.path?'active':''}`} draggable={!props.disabled} disabled={props.disabled} onDragStart={event=>{event.dataTransfer.setData('application/x-starview-file',node.path);event.dataTransfer.effectAllowed='move';setActions('');}} onClick={()=>{props.onFileSelect(node.path);setActions(actions===node.path?'':node.path);}} onContextMenu={event=>{event.preventDefault();setActions(node.path);}} aria-expanded={actions===node.path}><span className="file-icon" aria-hidden="true">{node.name.endsWith('.tex')?'≡':'◇'}</span><span>{node.name.replace(/\.tex$/,'')}</span></button>
+  {actions===node.path&&props.onAction&&<div className="file-row-actions"><button onClick={()=>{props.onAction?.(node.path,'move');setActions('');}}>Rename / move</button><button onClick={()=>{props.onAction?.(node.path,'delete');setActions('');}}>Delete</button></div>}
+ </>:<details open><summary className={drop===node.path?'drop-target':''} onDragOver={event=>{if(event.dataTransfer.types.includes('application/x-starview-file')){event.preventDefault();event.dataTransfer.dropEffect='move';setDrop(node.path);}}} onDragLeave={()=>setDrop('')} onDrop={event=>{event.preventDefault();event.stopPropagation();setDrop('');const source=event.dataTransfer.getData('application/x-starview-file');if(source&&!props.disabled)props.onMove?.(source,node.path);}}>{node.name}</summary>{branch(node.children)}</details>}</li>)}</ul>;}
+ return <div className="file-tree-root" onDragOver={event=>{if(event.target===event.currentTarget)event.preventDefault();}} onDrop={event=>{if(event.target===event.currentTarget){event.preventDefault();const source=event.dataTransfer.getData('application/x-starview-file');if(source)props.onMove?.(source,'');}}}>{branch(build(props.files))}</div>;
 }
-function Branch({ nodes, selectedFile, onFileSelect }: { nodes: Node[] } & Omit<Props, "files">) {
-  return <ul className="file-tree">{[...nodes].sort((a, b) => Number(a.isFile) - Number(b.isFile) || a.name.localeCompare(b.name)).map(node => <li key={node.path}>
-    {node.isFile ? <button className={selectedFile === node.path ? "active" : ""} title={node.path} onClick={() => onFileSelect(node.path)}><span className="file-icon" aria-hidden="true">{node.path.endsWith(".tex") ? "≡" : "◇"}</span>{node.name}</button>
-      : <details open><summary>{node.name}</summary><Branch nodes={node.children} selectedFile={selectedFile} onFileSelect={onFileSelect} /></details>}
-  </li>)}</ul>;
-}
-export default function FileTree({ files, ...props }: Props) { return <Branch nodes={build(files)} {...props} />; }

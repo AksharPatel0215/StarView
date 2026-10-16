@@ -1,10 +1,16 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Fragment, lazy, Suspense, useEffect, useRef, useState } from "react";
 const Editor = lazy(() => import("./components/LocalEditor"));
 import { labelConnection, setGraphColor, chooseFolder, getTags, updateTags, browseDirectories, compileProjectFile, getPdfUrl, getConnections, connectDocuments, getAssetUrl, getProjectFile, getProjectFiles, getProjects, openProject, saveProjectFile } from "./api/client";
 import type { FileLabels, DirectoryListing, Project, KnowledgeGraph } from "./api/client";
 import FileActionsDialog from "./components/FileActionsDialog";
 import Trash from "./components/Trash";
 import {moveFile,deleteFile} from "./api/client";
+import {DocumentSaveQueue,moveDestination} from './documentFlow';
+import AgentPanel from './components/AgentPanel';
+import ToolDivider from './components/ToolDivider';
+import ToolPicker from './components/ToolPicker';
+import {restoreTools,addTool,toolNames} from './panelLayout';
+import type {PanelMode,Tool} from './panelLayout';
 import Settings from "./components/Settings";
 import {usePreferences} from "./preferences";
 import CompactMenu from "./components/CompactMenu";
@@ -15,9 +21,9 @@ import Connections from "./components/Connections";
 import Dashboard from "./components/Dashboard";
 import DataViewer from "./components/DataViewer";
 import NodeManager from "./components/NodeManager";
-import ResizeHandle from "./components/ResizeHandle";
+
 import { getWorkspaceNodes, createWorkspaceNode, updateWorkspaceNode } from "./api/client";
-import type { CSSProperties } from "react";
+
 import type { WorkspaceNode } from "./api/client";
 import { wikiLinks } from "./documentLinks";
 const PdfPreview = lazy(() => import("./components/PdfPreview"));
@@ -36,15 +42,15 @@ function App() {
   const [center,setCenter] = useState<'editor'|'dashboard'|'data'>('dashboard');
   const [nodeEditor,setNodeEditor] = useState<{kind:'dashboard'|'data';node:WorkspaceNode|null}|null>(null);
   const [statsVersion,setStatsVersion] = useState(0);
-  const [tabs,setTabs] = useState<string[]>([]);
+  const [,setTabs] = useState<string[]>([]);
   const [layout,setLayout] = useState(() => {
     const defaults={sidebar:true,editor:true,preview:false,sidebarWidth:250,previewWidth:430};
     try {const saved=JSON.parse(localStorage.getItem('starview-layout')||'null');return saved?{sidebar:!!saved.sidebar,editor:saved.editor!==false,preview:!!saved.preview,sidebarWidth:Math.max(180,Math.min(420,Number(saved.sidebarWidth)||250)),previewWidth:Math.max(280,Math.min(800,Number(saved.previewWidth)||430))}:defaults;}catch{return defaults;}
   });
   useEffect(()=>{localStorage.setItem('starview-layout',JSON.stringify(layout));},[layout]);
-  function togglePanel(key:'sidebar'|'editor'|'preview'){setLayout(current=>{const next={...current,[key]:!current[key]};if(!next.editor&&!next.preview)next[key==='editor'?'preview':'editor']=true;return next;});}
+
   async function reloadNodes(){if(project)setNodes(await getWorkspaceNodes(project.name));}
-  function openNode(path:string){const node=nodes.find(item=>item.id===path);if(node){setActiveNode(node);setCenter(node.kind==='dashboard'?'dashboard':'data');setLayout(current=>({...current,editor:true}));}else{void selectFile(path);}}
+  async function openNode(path:string){openTool('latex');const node=nodes.find(item=>item.id===path);if(node){if(dirty&&project){try{await persistFile(project.name,selectedFile,fileContent);setSavedContent(fileContent);}catch(e){setError(message(e));return;}}setActiveNode(node);setCenter(node.kind==='dashboard'?'dashboard':'data');setLayout(current=>({...current,editor:true}));}else{void selectFile(path);}}
   async function saveNode(value:{title:string;kind:'dashboard'|'data';targets:string[];resource?:{provider:string;id:string}}){if(!project)return;const next=nodeEditor?.node?await updateWorkspaceNode(project.name,{...nodeEditor.node,title:value.title,targets:value.targets}):await createWorkspaceNode(project.name,value);await reloadNodes();loadGraph(await getConnections(project.name));setActiveNode(next);setCenter(next.kind==='dashboard'?'dashboard':'data');setStatsVersion(current=>current+1);}
   const [tags, setTags] = useState<FileLabels>({});
   const [fileSearch, setFileSearch] = useState("");
@@ -57,10 +63,22 @@ function App() {
   const [graph, setGraph] = useState<KnowledgeGraph>({ documents: [], links: [] });
   const [newDocument,setNewDocument] = useState(false);
   const [showAllFiles, setShowAllFiles] = useState(false);
-  const [panel, setPanel] = useState<"connections" | "preview">("connections");
-  const [readingMode, setReadingMode] = useState(false);
+  const [tools,setTools]=useState(()=>restoreTools(localStorage.getItem('starview-tools')));
+  const [toolWidths,setToolWidths]=useState<Record<Tool,number>>(()=>{try{const v=JSON.parse(localStorage.getItem('starview-tool-widths')||'{}');return {latex:Number(v.latex)>0?Number(v.latex):1,agent:Number(v.agent)>0?Number(v.agent):1,graph:Number(v.graph)>0?Number(v.graph):1};}catch{return {latex:1,agent:1,graph:1};}});
+  const [latexMode,setLatexMode]=useState<'read'|'write'>(()=>localStorage.getItem('starview-latex-mode')==='read'?'read':'write');
+  const [toolPicker,setToolPicker]=useState(false);
+  const reading=tools.includes('latex')&&latexMode==='read';
+  const view=reading?'page':'write';
+  function openTool(tool:Tool){setTools(previous=>addTool(previous,tool));setToolPicker(false);}
+  function setView(mode:'write'|'page'){openTool('latex');setLatexMode(mode==='page'?'read':'write');}
+  useEffect(()=>{localStorage.setItem('starview-tools',JSON.stringify(tools));localStorage.setItem('starview-tool-widths',JSON.stringify(toolWidths));localStorage.setItem('starview-latex-mode',latexMode);},[tools,toolWidths,latexMode]);
+  const [renderedSource,setRenderedSource]=useState("");
+  const renderRequest=useRef(0);
+  const renderCache=useRef(new Map<string,{content:string;pdf:string;version:number}>());
+
+
   const [assetPath, setAssetPath] = useState("");
-  const [buildDocument, setBuildDocument] = useState("");
+
   const [status, setStatus] = useState("");
   const [files, setFiles] = useState<string[]>([]);
   const [selectedFile, setSelectedFile] = useState("");
@@ -76,8 +94,8 @@ function App() {
   const [directoryPath, setDirectoryPath] = useState("");
   const [browserError, setBrowserError] = useState("");
   const [browsing, setBrowsing] = useState(false);
-  const decorations = useRef<import("monaco-editor").editor.IEditorDecorationsCollection | null>(null);
-  const editorRef = useRef<import("monaco-editor").editor.IStandaloneCodeEditor | null>(null);
+  const saveQueue=useRef(new DocumentSaveQueue());
+  function persistFile(name:string,path:string,content:string){return saveQueue.current.save(name+'::'+path,()=>saveProjectFile(name,path,content)).then(()=>{renderCache.current.clear();});}
   const fileRequest = useRef(0);
   const browseRequest = useRef(0);
   useEffect(()=>{
@@ -114,10 +132,7 @@ function App() {
     finally { setBusy(false); }
   }
 
-  function loadGraph(next: KnowledgeGraph, reset = false) {
-    setGraph(next);
-    setBuildDocument(current => !reset && (!current || next.documents.some(node => node.path === current && node.is_main)) ? current : next.documents.find(node => node.path === "main.tex" && node.is_main)?.path || next.documents.find(node => node.is_main)?.path || "");
-  }
+  function loadGraph(next:KnowledgeGraph,_reset=false){setGraph(next);}
 
   async function refresh() {
     if (!project || busy) return;
@@ -206,20 +221,23 @@ function App() {
     finally { setBusy(false); }
   }
 
-  async function actOnFile(target:string) {
-    if(!project||!fileAction)return;
-    if(dirty)throw new Error('Save your changes before moving or deleting this file.');
-    const source=fileAction.path;
-    if(fileAction.mode==='move'){
+  async function actOnFile(target:string,action=fileAction) {
+    if(!project||!action)return;
+    if(dirty){await persistFile(project.name,selectedFile,fileContent);setSavedContent(fileContent);}
+    const source=action.path;
+    if(action.mode==='move'){
+      if(source===target)return;
       const next=await moveFile(project.name,source,target);
       if(selectedFile===source){const content=await getProjectFile(project.name,next.path);setSelectedFile(next.path);setFileContent(content);setSavedContent(content);}
       if(assetPath===source)setAssetPath(next.path);
       setTabs(current=>current.map(path=>path===source?next.path:path));
-      if(buildDocument===source)setBuildDocument(next.path);
+
       setStatus('File moved. Links updated.');
     }else{
       await deleteFile(project.name,source);setTabs(current=>current.filter(path=>path!==source));
-      setSelectedFile('');setFileContent('');setSavedContent('');setAssetPath('');setStatus('Moved to trash. Restore it from Workspace → Trash.');
+      if(source===selectedFile){setSelectedFile('');setFileContent('');setSavedContent('');}
+      if(source===assetPath)setAssetPath('');
+      setStatus('Moved to trash. Restore it in Settings.');
     }
     setPdfPath('');await refresh();
   }
@@ -231,55 +249,40 @@ function App() {
       const created=await createProjectFile(project.name,path,content);
       const id=++fileRequest.current;
       setSelectedFile(created.path);setFileContent(content);setSavedContent(content);setAssetPath("");setPdfPath("");
-      setActiveNode(null);setCenter('editor');setReadingMode(false);setBuildDocument('');setLayout(current=>({...current,editor:true}));
-      setTabs(current=>Array.from(new Set([...current,created.path])));setNewDocument(false);setFileSearch('');setTagFilter('');setStatus('Document created. Start writing, then compile.');
+      setActiveNode(null);setCenter('editor');setView('write');setLayout(current=>({...current,editor:true}));
+      setTabs(current=>Array.from(new Set([...current,created.path])));setNewDocument(false);setFileSearch('');setTagFilter('');setStatus('Document created.');
       const [nextFiles,nextGraph,nextTags]=await Promise.all([getProjectFiles(project.name),getConnections(project.name),getTags(project.name)]);
       if(id===fileRequest.current){setFiles(nextFiles);loadGraph(nextGraph);setTags(nextTags);setStatsVersion(current=>current+1);}
     } catch(e) {setError(message(e));throw e;} finally {setBusy(false);}
   }
 
-  async function selectFile(file: string) {
-    const path=file;
+  async function selectFile(path:string){
+    openTool('latex');
     if(path.startsWith('@node/')){openNode(path);return;}
-    if(!project||busy||loadingFile||!canLeave())return;
-    setActiveNode(null);setCenter('editor');setLayout(current=>({...current,editor:true}));setTabs(current=>current.includes(path)?current:[...current,path]);
-    if (!project || busy) return;
-    const id = ++fileRequest.current;
-    setLoadingFile(true); setError(""); setStatus("");
-    try {
-      if (/\.(png|jpe?g|gif|webp|svg)$/i.test(file)) {
-        setAssetPath(file); setSelectedFile(""); setFileContent(""); setSavedContent(""); setPanel("preview");setLayout(current=>({...current,preview:true}));
-      } else if (file.toLowerCase().endsWith(".pdf")) {
-        if (id !== fileRequest.current) return;
-        setSelectedFile(""); setFileContent(""); setSavedContent("");
-        setPdfPath(file); setPdfVersion(Date.now()); setAssetPath(""); setPanel("preview");setLayout(current=>({...current,preview:true}));
-      } else {
-        const content = await getProjectFile(project.name, file);
-        if (id !== fileRequest.current) return;
-        if (graph.documents.find(node => node.path === file)?.is_main) setBuildDocument(file);
-        setSelectedFile(file); setFileContent(content); setSavedContent(content); setAssetPath("");
+    if(!project||busy||loadingFile)return;
+    if(path===selectedFile&&center==='editor')return;
+    const id=++fileRequest.current;
+    ++renderRequest.current;setLoadingFile(true);setRendering(view==='page'&&path.toLowerCase().endsWith('.tex'));setError('');setStatus('');
+    try{
+      if(dirty){await persistFile(project.name,selectedFile,fileContent);setSavedContent(fileContent);}
+      setActiveNode(null);setCenter('editor');setTabs(current=>current.includes(path)?current:[...current,path]);
+      setPdfPath('');setRenderedSource('');setAssetPath('');
+      if(/\.(png|jpe?g|gif|webp|svg)$/i.test(path)){
+        setAssetPath(path);setSelectedFile('');setFileContent('');setSavedContent('');setView('page');
+      }else if(path.toLowerCase().endsWith('.pdf')){
+        setSelectedFile('');setFileContent('');setSavedContent('');setPdfPath(path);setRenderedSource(path);setPdfVersion(Date.now());setView('page');
+      }else{
+        const content=await getProjectFile(project.name,path);
+        if(id!==fileRequest.current)return;
+        setSelectedFile(path);setFileContent(content);setSavedContent(content);
       }
-    } catch (e) { if (id === fileRequest.current) setError(message(e)); }
-    finally { if (id === fileRequest.current) setLoadingFile(false); }
+    }catch(e){if(id===fileRequest.current)setError(message(e));}
+    finally{if(id===fileRequest.current)setLoadingFile(false);}
   }
 
-  async function followDocument(path: string, render = false) {
-    if (!project || busy || loadingFile) return;
-    if (!graph.documents.some(node => node.path === path)) { setError("Linked document not found. Refresh files or check the link."); return; }
-    if (!canLeave()) return;
-    setBusy(true); setError(""); ++fileRequest.current;
-    setActiveNode(null);setCenter('editor');setLayout(current=>({...current,editor:true}));setTabs(current=>current.includes(path)?current:[...current,path]);
-    try {
-      const content = await getProjectFile(project.name, path);
-      if (graph.documents.find(node => node.path === path)?.is_main) setBuildDocument(path);
-      setSelectedFile(path); setFileContent(content); setSavedContent(content); setAssetPath("");
-      if (render && graph.documents.find(node => node.path === path)?.is_main) {
-        setStatus("Opening linked document…"); setBuildDocument(path); setRendering(true);
-        setPdfPath(await compileProjectFile(project.name, path)); setPdfVersion(Date.now()); setPanel("preview"); setLayout(current=>({...current,preview:true}));
-      } else if (render) setPanel("connections");
-      setStatus("Linked document opened");
-    } catch (e) { setError(message(e)); setStatus("Could not open linked document"); }
-    finally { setBusy(false); setRendering(false); }
+  async function followDocument(path:string,render=false){
+    if(render)setView('page');
+    await selectFile(path);
   }
 
   function resolveKeyword(target: string): string | undefined {
@@ -303,39 +306,53 @@ function App() {
     return () => window.removeEventListener("starview-follow", follow);
   });
 
-  const liveLinks = wikiLinks(fileContent).map(link => ({ target: resolveKeyword(link.target), label: link.label }));
-  useEffect(() => {
-    const model = editorRef.current?.getModel();
-    if (!model || !decorations.current) return;
-    decorations.current.set(wikiLinks(fileContent).map(link => {
-      const start = model.getPositionAt(link.start), end = model.getPositionAt(link.end);
-      return { range: { startLineNumber: start.lineNumber, startColumn: start.column, endLineNumber: end.lineNumber, endColumn: end.column }, options: { inlineClassName: "wiki-link-token", hoverMessage: { value: "Cmd/Ctrl-click or Cmd/Ctrl-Enter to open this document." } } };
-    }));
-  }, [fileContent, selectedFile]);
-
-  async function save(compile = false) {
-    if (!project || !selectedFile || busy || loadingFile) return;
-    setBusy(true); setError(""); setStatus(compile ? "Compiling…" : "Saving…");
-    try {
-      await saveProjectFile(project.name, selectedFile, fileContent);
-      setSavedContent(fileContent);
-      if (compile) {
-        setRendering(true); setPanel("preview");
-        setPdfPath(await compileProjectFile(project.name, buildDocument || selectedFile));
-        setPanel("preview"); setAssetPath("");
-        setPdfVersion(Date.now());setLayout(current=>({...current,preview:true}));
-        setFiles(await getProjectFiles(project.name));
-      }
-      loadGraph(await getConnections(project.name));
-      setStatsVersion(current=>current+1); setStatus(compile ? "Build complete" : "All changes saved");
-    } catch (e) { setError(message(e)); setStatus("Action failed"); }
-    finally { setBusy(false); setRendering(false); }
+  async function save(){
+    if(!project||!selectedFile||busy||loadingFile)return;
+    const content=fileContent,path=selectedFile,id=fileRequest.current;
+    try{await persistFile(project.name,path,content);if(id===fileRequest.current){setSavedContent(content);setStatus('Saved');loadGraph(await getConnections(project.name));}}
+    catch(e){setError(message(e));}
   }
 
+  useEffect(()=>{
+    if(view!=='page'||center!=='editor'||!project||!selectedFile||loadingFile)return;
+    const id=++renderRequest.current;let alive=true;
+    const key=project.name+'::'+selectedFile,path=selectedFile,content=fileContent;
+    setRenderedSource('');setPdfPath('');setError('');
+    if(!path.toLowerCase().endsWith('.tex')){setRendering(false);return;}
+    const cached=renderCache.current.get(key);
+    if(cached?.content===content){setPdfPath(cached.pdf);setPdfVersion(cached.version);setRenderedSource(path);setRendering(false);return;}
+    setRendering(true);
+    const timer=setTimeout(()=>{void (async()=>{
+      try{
+        if(content!==savedContent)await persistFile(project.name,path,content);
+        const pdf=await compileProjectFile(project.name,path);
+        if(!alive||id!==renderRequest.current)return;
+        const version=Date.now();renderCache.current.set(key,{content,pdf,version});
+        setSavedContent(content);setPdfPath(pdf);setPdfVersion(version);setRenderedSource(path);
+      }catch(e){if(alive&&id===renderRequest.current)setError(message(e));}
+      finally{if(alive&&id===renderRequest.current)setRendering(false);}
+    })();},500);
+    return()=>{alive=false;clearTimeout(timer);};
+  },[view,center,project,selectedFile,fileContent,savedContent,loadingFile]);
+
+  useEffect(()=>{
+    if(!dirty||!project||loadingFile||busy||reading)return;
+    const path=selectedFile,content=fileContent,id=fileRequest.current;
+    const timer=setTimeout(()=>{void persistFile(project.name,path,content).then(()=>{
+      if(fileRequest.current===id){setSavedContent(content);setStatus('Saved');}
+      return getConnections(project.name);
+    }).then(next=>{if(fileRequest.current===id)loadGraph(next);}).catch(e=>setError(message(e)));},900);
+    return()=>clearTimeout(timer);
+  },[fileContent,selectedFile,project,dirty,loadingFile,busy,reading]);
+  useEffect(()=>{const key=(event:KeyboardEvent)=>{if((event.metaKey||event.ctrlKey)&&event.key==='s'){event.preventDefault();void save();}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key);});
+  async function moveDraggedFile(path:string,folder:string){
+    if(busy||loadingFile)return;
+    const target=moveDestination(path,folder);
+    try{await actOnFile(target,{path,mode:'move'});}catch(e){setError(message(e));}
+  }
   const actionPath=selectedFile||assetPath||(pdfPath&&!pdfPath.startsWith(".starview/")?pdfPath:"");
   const activePath = selectedFile || assetPath || pdfPath;
   const activeTags = tags[activePath];
-  const allTags = [...new Set(Object.values(tags).flatMap(value => [value.folder, ...value.custom]))].sort();
   const visibleFiles = files.filter(file => (!tagFilter || (tags[file] && [tags[file].folder, ...tags[file].custom].includes(tagFilter))) && `${file} ${tags[file]?.custom.join(" ") || ""}`.toLowerCase().includes(fileSearch.trim().toLowerCase()));
   const filteredGraph = tagFilter ? { ...graph, documents: graph.documents.filter(node => node.tags.includes(tagFilter)), links: graph.links.filter(link => graph.documents.find(node => node.path === link.source)?.tags.includes(tagFilter) && graph.documents.find(node => node.path === link.target)?.tags.includes(tagFilter)) } : graph;
   const documents = visibleFiles.filter(file => /\.tex$/i.test(file));
@@ -343,51 +360,15 @@ function App() {
   const pdfs = visibleFiles.filter(file => /\.pdf$/i.test(file) && !documents.some(source => source.slice(0, -4) === file.slice(0, -4) || source.split("/").pop()?.slice(0, -4) === file.slice(0, -4)));
   const otherFiles = visibleFiles.filter(file => !documents.includes(file) && !resources.includes(file) && !pdfs.includes(file));
 
-  return <div className="app">
-    <header className="header"><h1><span className="brand-mark" aria-hidden="true">✳</span>StarView</h1>
-      <span className="header-spacer" />
-      {projects.length > 0 && <select aria-label="Open project" value={project?.name || ""} disabled={busy || loadingFile} onChange={e => {
-        const next = projects.find(item => item.name === e.target.value); if (next) void selectProject(next);
-      }}><option value="" disabled>Select a project</option>{projects.map(item => <option key={item.name} value={item.name}>{item.name}</option>)}</select>}
-      <button className="primary" disabled={!project||busy||loadingFile} title="Create a document (Alt+N)" onClick={()=>setNewDocument(true)}>+ New document</button>
-      <button disabled={!project} aria-pressed={layout.preview&&panel==='connections'} onClick={()=>{setPanel('connections');setLayout(current=>({...current,preview:!(current.preview&&panel==='connections')}));}}>Graph</button>
-      <button onClick={()=>setSettingsOpen(true)}>Settings</button><CompactMenu label="View">{(['sidebar','editor','preview'] as const).map(key=><button key={key} aria-pressed={layout[key]} onClick={()=>togglePanel(key)}>{layout[key]?'✓ ':''}{key==='sidebar'?'Files':key==='editor'?'Editor':'Preview & connections'}</button>)}<button onClick={()=>setLayout({sidebar:true,editor:true,preview:false,sidebarWidth:250,previewWidth:430})}>Reset layout</button></CompactMenu>
-      <CompactMenu label="Workspace"><button disabled={!project} onClick={()=>setTrashOpen(true)}>Trash</button><button disabled={busy||loadingFile} onClick={()=>void pickFolder()}>Open folder…</button><button disabled={!project} onClick={()=>{setActiveNode(null);setCenter('dashboard');setLayout(current=>({...current,editor:true}));}}>Overview</button><button disabled={!project} onClick={()=>setNodeEditor({kind:'dashboard',node:null})}>New dashboard</button><button disabled={!project} onClick={()=>setNodeEditor({kind:'data',node:null})}>Connect a data node</button></CompactMenu>
-    </header>
-    {accountNotice&&<p className="account-notice" role="status">{accountNotice}<button aria-label="Dismiss account notice" onClick={()=>setAccountNotice('')}>×</button></p>}
-    {error && <p className="error" role="alert">{error}</p>}
-
-    <main style={{'--sidebar-width':layout.sidebar?`${layout.sidebarWidth}px`:'0px'} as CSSProperties} className={`workspace adaptable${!layout.sidebar?' sidebar-hidden':''}${!layout.editor?' editor-hidden':''}${!layout.preview?' preview-hidden':''}${readingMode && panel === "preview" && pdfPath && !assetPath ? " reading-mode" : ""}`}>
-      <aside className="sidebar" style={{width:layout.sidebarWidth}}><h2>{project?.name || "Your workspace"}</h2>
-        {project && <><p className="workspace-location" title={project.root}>Local folder</p>
-          <div className="sidebar-search"><input className="file-search" type="search" aria-label="Search files" placeholder="Find a document…" value={fileSearch} onChange={e => setFileSearch(e.target.value)} /><CompactMenu label={tagFilter?'Filter •':'Filter'}><label className="tag-filter">Tag<select aria-label="Filter by tag" value={tagFilter} onChange={e => setTagFilter(e.target.value)}><option value="">All files</option>{allTags.map(tag => <option key={tag}>{tag}</option>)}</select></label><button disabled={busy||loadingFile} onClick={()=>void refresh()}>Refresh files</button><button aria-pressed={showAllFiles} onClick={()=>setShowAllFiles(!showAllFiles)}>{showAllFiles?'Hide other files':'Show other files'}</button><button onClick={()=>{setShowBrowser(true);void browse(project.root);}}>Browse folders…</button></CompactMenu></div>
-          {tagFilter&&<button className="active-filter" onClick={()=>setTagFilter('')}>{tagFilter} ×</button>}
-          {nodes.length>0&&<><p className="section-label">Workspace nodes · {nodes.length}</p><div className="workspace-node-list">{nodes.map(node=><button key={node.id} className={activeNode?.id===node.id?'active':''} onClick={()=>openNode(node.id)}><span>{node.kind==='dashboard'?'◈':'▤'}</span><span>{node.title}<small>{node.kind==='dashboard'?'Dashboard hub':node.resource?.provider==='google'?'Google Drive':'OneDrive'}</small></span></button>)}</div></>}
-          <div className="documents-heading"><p className="section-label">Documents <span>{documents.length}</span></p><button aria-label="Create new document" title="New document (Alt+N)" disabled={busy||loadingFile} onClick={()=>setNewDocument(true)}>+</button></div>
-          <FileTree files={documents} selectedFile={selectedFile} onFileSelect={file => void selectFile(file)} />
-          {documents.length === 0 && <div className="empty-documents"><p>Your next idea starts here.</p><button disabled={busy||loadingFile} onClick={()=>setNewDocument(true)}>Create your first document</button></div>}
-          {resources.length > 0 && <details className="sidebar-group"><summary>References & assets <small>{resources.length}</small></summary><FileTree files={resources} selectedFile={assetPath || selectedFile} onFileSelect={file => void selectFile(file)} /></details>}
-          {pdfs.length > 0 && <details className="sidebar-group"><summary>Imported PDFs <small>{pdfs.length}</small></summary><FileTree files={pdfs} selectedFile={pdfPath} onFileSelect={file => void selectFile(file)} /></details>}
-          {showAllFiles && <><p className="section-label">Other files</p><FileTree files={otherFiles} selectedFile={selectedFile} onFileSelect={file => void selectFile(file)} /></>}
-        </>}
-        {!project && <div className="empty-state"><p>Open a folder to bring your documents together.</p></div>}
-      </aside>
-      {layout.sidebar&&(layout.editor||layout.preview)&&<ResizeHandle label="Resize file sidebar" value={layout.sidebarWidth} min={180} max={420} onChange={sidebarWidth=>setLayout(current=>({...current,sidebarWidth}))}/>}
-      <section className="editor" style={{display:layout.editor?undefined:'none'}}>
-        {project&&center!=='editor'?<><div className="node-workspace-actions">{selectedFile&&<button onClick={()=>{setCenter('editor');setActiveNode(null);}}>Back to {selectedFile.split('/').pop()}</button>}{activeNode&&<button onClick={()=>setNodeEditor({kind:activeNode.kind,node:activeNode})}>Edit node & connections</button>}</div>{center==='data'&&activeNode?<DataViewer project={project.name} node={activeNode} connections={graph.documents.filter(item=>activeNode.targets.includes(item.path))} onOpen={openNode}/>:<Dashboard project={project.name} node={activeNode} refresh={statsVersion} resources={graph.documents.filter(item=>item.kind==='data'&&(!activeNode||activeNode.targets.includes(item.path)))} onOpen={path=>void selectFile(path)}/>}</>:<>
-        {tabs.length>0&&<div className="document-tabs" role="tablist" aria-label="Open files">{tabs.map(path=><div key={path}><button role="tab" aria-selected={selectedFile===path||assetPath===path||pdfPath===path} onClick={()=>void selectFile(path)} title={path}>{path.split('/').pop()}</button><button aria-label={`Close tab ${path}`} disabled={busy||loadingFile} onClick={()=>{if(path===selectedFile||path===assetPath||path===pdfPath){if(!canLeave())return;setSelectedFile('');setAssetPath('');setPdfPath('');setFileContent('');setSavedContent('');}setTabs(current=>current.filter(item=>item!==path));}}>×</button></div>)}</div>}
-        <div className="editor-header"><h2 title={actionPath}>{(actionPath).split('/').pop() || "Document workspace"}{dirty ? " •" : ""}</h2>
-          {actionPath && <div className="editor-actions"><CompactMenu label="File"><button disabled={busy||loadingFile||dirty} onClick={()=>setFileAction({path:actionPath,mode:"move"})}>Move / rename…</button><button disabled={busy||loadingFile||dirty} onClick={()=>setFileAction({path:actionPath,mode:"delete"})}>Move to trash…</button>{dirty&&<small>Save changes to move or delete.</small>}</CompactMenu>{selectedFile&&<button disabled={busy || loadingFile} onClick={() => void save()}>Save</button>}
-            {selectedFile.toLowerCase().endsWith(".tex") && <button className="primary" disabled={busy || loadingFile} onClick={() => void save(true)}>{busy ? "Working…" : "Compile ↗"}</button>}
-          </div>}
-        </div>
-        {activeTags && <details className="document-details"><summary>Tags <span>{activeTags.folder}{activeTags.custom.length?` · ${activeTags.custom.length} labels`: ""}</span></summary><div className="file-tags"><span className="tag-chip folder-tag" title="Automatic containing-folder tag">{activeTags.folder}</span>{activeTags.custom.map(tag => <button className="tag-chip" key={tag} disabled={busy} aria-label={`Remove tag ${tag}`} onClick={() => void editTags(activeTags.custom.filter(value => value !== tag))}>{tag} ×</button>)}<form onSubmit={e => { e.preventDefault(); if (tagDraft.trim()) void editTags([...activeTags.custom, tagDraft.trim()]); }}><input aria-label="New tag" placeholder="Add tag…" value={tagDraft} maxLength={60} disabled={busy} onChange={e => setTagDraft(e.target.value)} list="workspace-tags"/><button disabled={busy || !tagDraft.trim()}>+</button></form><datalist id="workspace-tags">{allTags.map(tag => <option key={tag} value={tag}/>)}</datalist></div></details>}
-        {selectedFile ? <div className="editor-body"><Suspense fallback={<p className="reader-loading">Opening editor…</p>}><Editor documents={graph.documents} documentPath={selectedFile} height="100%" path={`${project?.name}/${selectedFile}`} language={selectedFile.toLowerCase().endsWith(".tex") ? "latex" : "plaintext"} theme="starview" onMount={(editor, monaco) => {
-            editorRef.current = editor;
-            decorations.current = editor.createDecorationsCollection(wikiLinks(editor.getValue()).map(link => {
-              const model = editor.getModel()!; const start = model.getPositionAt(link.start), end = model.getPositionAt(link.end);
-              return { range: { startLineNumber: start.lineNumber, startColumn: start.column, endLineNumber: end.lineNumber, endColumn: end.column }, options: { inlineClassName: "wiki-link-token", hoverMessage: { value: "Cmd/Ctrl-click or Cmd/Ctrl-Enter to open this document." } } };
-            }));
+  function renderPanel(mode:PanelMode,visible:boolean) {return <>
+    {mode==='graph'&&<div className="pane-graph-holder"><div className="studio-graph"><Connections visible={visible && mode==='graph'} key={(project?.name||'empty')+':graph'} graph={filteredGraph} selected={activeNode?.id||selectedFile} busy={busy||loadingFile} onOpen={openNode} onConnect={(source,target,remove)=>void connect(source,target,remove)} onLabel={labelEdge} onColor={colorGraph}/></div></div>}
+    {mode!=='graph'&&(<section className="studio-content" aria-label={`${mode==='write'?'Write':'Read'} document`}>
+        <div className="studio-document-bar"><span>{activeNode?.title||graph.documents.find(node=>node.path===actionPath)?.title||actionPath.split('/').pop()?.replace(/\.tex$/,'')||'Workspace'}</span>{activePath&&center==='editor'&&<CompactMenu label="Document details">
+          <p className="project-root">{actionPath}</p><button onClick={()=>setFileAction({path:actionPath,mode:'move'})}>Rename / move</button><button onClick={()=>setFileAction({path:actionPath,mode:'delete'})}>Delete</button>
+          {activeTags&&<><p>Labels</p><div className="file-tags">{activeTags.custom.map(tag=><button key={tag} onClick={()=>void editTags(activeTags.custom.filter(item=>item!==tag))}>{tag} ×</button>)}<form onSubmit={event=>{event.preventDefault();if(tagDraft.trim())void editTags([...activeTags.custom,tagDraft.trim()]);}}><input aria-label="New tag" value={tagDraft} onChange={event=>setTagDraft(event.target.value)} placeholder="Add label…"/><button disabled={!tagDraft.trim()}>Add</button></form></div></>}
+        </CompactMenu>}{activeNode&&<button className="subtle-control" onClick={()=>setNodeEditor({kind:activeNode.kind,node:activeNode})}>{activeNode.kind==='dashboard'?'Edit dashboard':'Edit resource'}</button>}</div>
+        {project&&center!=='editor'?center==='data'&&activeNode?<DataViewer project={project.name} node={activeNode} connections={graph.documents.filter(item=>activeNode.targets.includes(item.path))} onOpen={openNode}/>:<Dashboard documents={graph.documents} project={project.name} node={activeNode} refresh={statsVersion} resources={graph.documents.filter(item=>item.kind==='data'&&(!activeNode||activeNode.targets.includes(item.path)))} onOpen={path=>void selectFile(path)}/>:null}
+        {mode==='write'&&center==='editor'&&(selectedFile?<div className="editor-body studio-writing"><Suspense fallback={<p className="reader-loading">Opening editor…</p>}><Editor documents={graph.documents} documentPath={selectedFile} height="100%" path={`${project?.name}/${selectedFile}?tool=latex`} language={selectedFile.toLowerCase().endsWith(".tex") ? "latex" : "plaintext"} theme="starview" onMount={(editor, monaco) => {
             function followAt(position: import("monaco-editor").IPosition) {
               const model = editor.getModel(); if (!model) return;
               const offset = model.getOffsetAt(position);
@@ -398,25 +379,61 @@ function App() {
               if (event.target.position && (event.event.ctrlKey || event.event.metaKey)) followAt(event.target.position);
             });
             editor.addAction({ id: "starview.follow-link", label: "Open document link", keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: () => { const position = editor.getPosition(); if (position) followAt(position); } });
-          }} beforeMount={monaco => monaco.editor.defineTheme("starview", { base: "vs-dark", inherit: true, rules: [], colors: { "editor.background": "#191d26", "editorLineNumber.foreground": "#515c70", "editor.lineHighlightBackground": "#202631", "editor.selectionBackground": "#41365c" } })} value={fileContent} options={{ readOnly: busy || loadingFile, fontSize: preferences.fontSize, lineHeight: Math.round(preferences.fontSize*1.75), minimap: { enabled: false }, padding: { top: 14 }, scrollBeyondLastLine: false, wordWrap: preferences.wordWrap?"on":"off" }} onChange={value => setFileContent(value ?? "")} /></Suspense></div>
-          : <div className="empty-state"><div className="empty-icon" aria-hidden="true">✧</div><h2>{assetPath ? "Image preview" : "Make room for your ideas"}</h2><p>{assetPath ? "Your image is open in the preview panel." : "Choose a document to write, or explore how your LaTeX documents connect."}</p>{!project ? <button className="primary" onClick={() => void pickFolder()}>Open a local folder</button> : <button className="primary" onClick={()=>setNewDocument(true)}>Create a document</button>}</div>}
-        {selectedFile.toLowerCase().endsWith(".tex") && liveLinks.length>0 && <details className="document-details link-details"><summary>Links <span>{liveLinks.length}</span></summary><div className="inline-links">{liveLinks.length ? liveLinks.map((link, index) => <button key={index} disabled={busy || loadingFile || !link.target} title={link.target || "Document not found or ambiguous"} onClick={() => { if (link.target) void followDocument(link.target); }}>{link.label}{!link.target && " (unresolved)"}</button>) : <small>Type [[ to find a document · Enter to link · ⌘/Ctrl-click to follow</small>}</div></details>}
-        <footer className="editor-status"><span role="status">{loadingFile ? "Opening file…" : status || (dirty ? "Unsaved changes" : "Ready")}</span>
-          {project && <details className="compile-options"><summary>Compile settings</summary><label>Main document <select aria-label="Main document" value={buildDocument} disabled={busy} onChange={e => setBuildDocument(e.target.value)}><option value="">Compile selected file</option>{graph.documents.filter(node => node.is_main).map(node => <option key={node.path} value={node.path}>{node.path}</option>)}</select></label></details>}
-        </footer>
-      </>}
-      </section>
-      {layout.editor&&layout.preview&&<ResizeHandle label="Resize inspector" value={layout.previewWidth} min={280} max={800} reverse onChange={previewWidth=>setLayout(current=>({...current,previewWidth}))}/>}
-      <section className="preview" style={{width:layout.editor?layout.previewWidth:undefined,display:layout.preview?undefined:'none'}}>{rendering && <div className="render-overlay" role="status"><span className="loading-orbit"/>Rendering your document…</div>}<div className="panel-header"><button className={panel === "connections" ? "active" : ""} aria-pressed={panel === "connections"} onClick={() => setPanel("connections")}>Connections</button><button className={panel === "preview" ? "active" : ""} aria-pressed={panel === "preview"} onClick={() => setPanel("preview")}>Preview</button>{panel === "preview" && pdfPath && !assetPath && <button className="reading-toggle" aria-pressed={readingMode} onClick={() => setReadingMode(!readingMode)}>{readingMode ? "Show editor" : "Focus reading"}</button>}</div>
-        {panel === "connections" ? <Connections key={project?.name || "empty"} graph={filteredGraph} selected={activeNode?.id||selectedFile} busy={busy || loadingFile} onOpen={openNode} onConnect={(source, target, remove) => void connect(source, target, remove)} onLabel={labelEdge} onColor={colorGraph} />
-          : project && assetPath ? <img className="asset-preview" src={getAssetUrl(project.name, assetPath)} alt={assetPath} onError={() => setError("Could not load this image")} />
-          : project && pdfPath ? <Suspense fallback={<p className="reader-loading" role="status">Loading reader…</p>}><PdfPreview url={getPdfUrl(project.name, pdfPath, pdfVersion)} onOpen={path => void followDocument(path, true)} /></Suspense>
-          : <div className="empty-state"><div className="empty-icon" aria-hidden="true">▤</div><h2>Your document, rendered</h2><p>Compile your main document to see its PDF here. Images and imported PDFs open here too.</p></div>}
-      </section>
+          }} value={fileContent} options={{ readOnly: busy || loadingFile, fontSize: preferences.fontSize, lineHeight: Math.round(preferences.fontSize*1.75), minimap: { enabled: false }, padding: { top: 14 }, scrollBeyondLastLine: false, wordWrap: preferences.wordWrap?"on":"off" }} onChange={value => setFileContent(value ?? "")} /></Suspense></div>:<div className="empty-state"><h2>Choose a note to write</h2><p>Open a file from the sidebar.</p></div>)}
+        {mode==='read'&&center==='editor'&&<div className="studio-page" aria-busy={rendering||loadingFile}>{loadingFile||rendering?<div className="empty-state" role="status"><span className="loading-orbit"/><p>Preparing {selectedFile.split('/').pop()||'page'}…</p></div>:project&&assetPath?<img className="asset-preview" src={getAssetUrl(project.name,assetPath)} alt={assetPath}/>:project&&pdfPath&&(!selectedFile||renderedSource===selectedFile)?<Suspense fallback={<p className="reader-loading">Opening page…</p>}><PdfPreview key={project.name+':'+renderedSource} url={getPdfUrl(project.name,pdfPath,pdfVersion)} onOpen={path=>void followDocument(path,true)}/></Suspense>:<div className="empty-state"><h2>{error?'This page could not be rendered':'No page to display'}</h2><p>{error?'Switch to Write to check the source.':'Open a LaTeX document or PDF.'}</p></div>}</div>}
+        {!project&&<div className="empty-state"><h2>A place for connected ideas</h2><button onClick={()=>void pickFolder()}>Open workspace</button></div>}
+        {mode==='write'&&center==='editor'&&<footer className="studio-status" role="status">{loadingFile?'Opening…':dirty?'Saving…':status||'Saved'}<span>⌘/Ctrl S to save · Alt N for a new note</span></footer>}
+      </section>)}
+  </>;}
+  async function agentApplied(paths:string[]) {
+    renderCache.current.clear();
+    if(project&&selectedFile&&paths.includes(selectedFile)) {const content=await getProjectFile(project.name,selectedFile);setFileContent(content);setSavedContent(content);setPdfPath('');setRenderedSource('');}
+    await refresh();
+  }
+
+  return <div className="app studio-app">
+    <header className="studio-header">
+      <button className="sidebar-toggle" aria-label={layout.sidebar?'Hide files':'Show files'} aria-pressed={layout.sidebar} onClick={()=>setLayout(current=>({...current,sidebar:!current.sidebar}))}>☰</button>
+      <button className="studio-brand" onClick={()=>{setActiveNode(nodes.find(node=>node.kind==='dashboard')||null);setCenter('dashboard');setView('write');}}>✳ <span>{project?.name||'StarView'}</span></button>
+      <div className="workspace-actions">{tools.length>0&&tools.length<3&&<button aria-expanded={toolPicker} onClick={()=>setToolPicker(value=>!value)}>Add tool</button>}</div>
+      <button className="settings-toggle" aria-label="Settings" onClick={()=>setSettingsOpen(true)}>⚙</button>
+    </header>
+    {accountNotice&&<p className="account-notice" role="status">{accountNotice}<button aria-label="Dismiss account notice" onClick={()=>setAccountNotice('')}>×</button></p>}
+    {error&&<p className="error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}>×</button></p>}
+    <main className="studio-workspace">
+      {layout.sidebar&&<aside className="sidebar studio-sidebar">
+        <div className="sidebar-heading" onDragOver={event=>{if(event.dataTransfer.types.includes('application/x-starview-file'))event.preventDefault();}} onDrop={event=>{event.preventDefault();const path=event.dataTransfer.getData('application/x-starview-file');if(path)void moveDraggedFile(path,'');}}><span>Files</span><button aria-label="New document" disabled={!project||busy||loadingFile} onClick={()=>setNewDocument(true)}>+</button></div>
+        {project?<><input className="file-search" type="search" aria-label="Search files" placeholder="Find a note…" value={fileSearch} onChange={e=>setFileSearch(e.target.value)}/>
+          {nodes.length>0&&<div className="workspace-node-list">{nodes.map(node=><button key={node.id} className={activeNode?.id===node.id?'active':''} onClick={()=>openNode(node.id)}><span>{node.kind==='dashboard'?'◈':'▤'}</span><span>{node.title}</span></button>)}</div>}
+          <FileTree files={documents} selectedFile={selectedFile} onFileSelect={file=>void selectFile(file)} onAction={(path,mode)=>setFileAction({path,mode})} onMove={(path,folder)=>void moveDraggedFile(path,folder)} disabled={busy||loadingFile}/>
+          {!documents.length&&<p className="empty-documents">No notes yet. Use + to start.</p>}
+          {resources.length>0&&<details className="sidebar-group"><summary>Supporting files</summary><FileTree files={resources} selectedFile={assetPath} onFileSelect={file=>void selectFile(file)} onAction={(path,mode)=>setFileAction({path,mode})} onMove={(path,folder)=>void moveDraggedFile(path,folder)}/></details>}
+          {pdfs.length>0&&<details className="sidebar-group"><summary>PDFs</summary><FileTree files={pdfs} selectedFile={pdfPath} onFileSelect={file=>void selectFile(file)} onAction={(path,mode)=>setFileAction({path,mode})} onMove={(path,folder)=>void moveDraggedFile(path,folder)}/></details>}
+          {showAllFiles&&<FileTree files={otherFiles} onFileSelect={file=>void selectFile(file)} onAction={(path,mode)=>setFileAction({path,mode})} onMove={(path,folder)=>void moveDraggedFile(path,folder)}/>}
+        </>:<button onClick={()=>void pickFolder()}>Open workspace</button>}
+      </aside>}
+      <div className="studio-panels fixed-tool-panels">
+        {tools.map((tool,index)=><Fragment key={tool}>
+          {index>0&&<ToolDivider left={toolWidths[tools[index-1]]} right={toolWidths[tool]} onChange={(left,right)=>setToolWidths(previous=>({...previous,[tools[index-1]]:left,[tool]:right}))}/>}
+          <section className="tool-window" aria-label={`${toolNames[tool]} tool`} style={{flexGrow:toolWidths[tool]}}>
+            {tool!=='agent'&&<header className="tool-header"><strong>{toolNames[tool]}</strong>{tool==='latex'&&<nav aria-label="LaTeX view">{(['read','write'] as const).map(mode=><button key={mode} aria-pressed={latexMode===mode} onClick={()=>setLatexMode(mode)}>{mode==='read'?'Read':'Write'}</button>)}</nav>}<button className="close-tool" aria-label={`Close ${toolNames[tool]} tool`} onClick={()=>setTools(previous=>previous.filter(t=>t!==tool))}>×</button></header>}
+            {tool==='agent'?(project?<AgentPanel key={project.name} project={project.name} current={selectedFile} onClose={()=>setTools(previous=>previous.filter(t=>t!=='agent'))} onOpen={path=>void selectFile(path)} beforeApply={async()=>{if(dirty&&project){await persistFile(project.name,selectedFile,fileContent);setSavedContent(fileContent);}}} onApplied={agentApplied}/>:<div className="empty-state"><h2>Agent</h2><button onClick={()=>void pickFolder()}>Open workspace</button><button onClick={()=>setTools(previous=>previous.filter(t=>t!=='agent'))}>Close</button></div>):renderPanel(tool==='graph'?'graph':latexMode,true)}
+          </section>
+        </Fragment>)}
+        {!tools.length&&<div className="empty-tools"><span>✳</span><h2>Your workspace, your tools</h2><button onClick={()=>setToolPicker(true)}>Add tool</button></div>}
+      </div>
     </main>
+    {toolPicker&&<ToolPicker tools={tools} onAdd={openTool} onClose={()=>setToolPicker(false)}/>}
+
     {fileAction&&<FileActionsDialog path={fileAction.path} files={files} mode={fileAction.mode} onSave={actOnFile} onClose={()=>setFileAction(null)}/>}
     {trashOpen&&project&&<Trash project={project.name} onRestore={refresh} onClose={()=>setTrashOpen(false)}/>}
-    {settingsOpen&&<Settings onClose={()=>setSettingsOpen(false)} onResetLayout={()=>setLayout({sidebar:true,editor:true,preview:false,sidebarWidth:250,previewWidth:430})}/>}
+    {settingsOpen&&<Settings onClose={()=>setSettingsOpen(false)} onResetLayout={()=>{setLayout({sidebar:true,editor:true,preview:false,sidebarWidth:250,previewWidth:430});setTools(['latex','graph']);setToolWidths({latex:1,agent:1,graph:1});setLatexMode('write');}}>
+      <h3>Workspace</h3><label className="settings-row"><span>Current workspace</span><select aria-label="Open project" value={project?.name||''} disabled={busy||loadingFile} onChange={e=>{const next=projects.find(p=>p.name===e.target.value);if(next)void selectProject(next);}}><option value="" disabled>Select a workspace</option>{projects.map(p=><option key={p.name}>{p.name}</option>)}</select></label>
+      <div className="settings-actions"><button onClick={()=>{setSettingsOpen(false);void pickFolder();}}>Open folder…</button><button disabled={!project} onClick={()=>void refresh()}>Refresh files</button><button disabled={!project} onClick={()=>{setSettingsOpen(false);setTrashOpen(true);}}>Trash</button><button disabled={!project} onClick={()=>{setSettingsOpen(false);setNodeEditor({kind:'dashboard',node:null});}}>New dashboard</button><button disabled={!project} onClick={()=>{setSettingsOpen(false);setNodeEditor({kind:'data',node:null});}}>Connect data</button></div>
+      <label className="settings-row"><span>Show file sidebar</span><input type="checkbox" checked={layout.sidebar} onChange={e=>setLayout(current=>({...current,sidebar:e.target.checked}))}/></label>
+      <label className="settings-row"><span>Show supporting files</span><input type="checkbox" checked={showAllFiles} onChange={e=>setShowAllFiles(e.target.checked)}/></label>
+      <h3>Account</h3><div className="settings-actions"><button onClick={()=>{setSettingsOpen(false);window.dispatchEvent(new Event('starview-account'));}}>Account settings</button><button onClick={()=>{void save().then(()=>window.dispatchEvent(new Event('starview-sign-out')));}}>Sign out</button></div>
+    </Settings>}
     {newDocument&&project&&<NewDocument files={files} folder={selectedFile.includes('/')?selectedFile.slice(0,selectedFile.lastIndexOf('/')):''} busy={busy} onSave={createDocument} onClose={()=>{if(!busy)setNewDocument(false);}}/>}
     {nodeEditor&&project&&<NodeManager key={nodeEditor.node?.id||nodeEditor.kind} node={nodeEditor.node} kind={nodeEditor.kind} graph={graph} onSave={saveNode} onClose={()=>setNodeEditor(null)}/>}
     {showBrowser && <div className="modal-backdrop"><section className="folder-browser" role="dialog" aria-modal="true" aria-labelledby="folder-title">

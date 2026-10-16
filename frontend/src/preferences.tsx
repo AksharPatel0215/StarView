@@ -22,6 +22,8 @@ export default function PreferencesProvider({children}:{children:ReactNode}) {
   root.style.setProperty('--document-background',theme.id==='night'?'#191d26':theme.colors.surface);
   root.style.setProperty('--document-foreground',theme.colors.text);
   root.style.setProperty('--settings-accent',theme.colors.accent);
+  for (const [role,color] of Object.entries(theme.colors)) root.style.setProperty(`--ui-${role}`,color);
+  root.dataset.appearance=theme.light?'light':'dark';
   try{localStorage.setItem('starview-preferences',JSON.stringify(preferences));}catch{/* Preferences still work when storage is unavailable. */}
   window.dispatchEvent(new Event('starview-preferences-change'));
  },[preferences]);

@@ -141,7 +141,7 @@ async def ask(root, prompt, model='', current='', history=None):
     if wants_changes:
         messages_task='The request requires proposed actions. Include a nonempty changes array containing complete note content or connection actions. An explanation alone does not fulfill it.'
     else:
-        messages_task='This is an explanation request. Return changes: [] and cite the retrieved sources.' 
+        messages_task='This is an explanation request. Return changes: [] and cite the retrieved sources.'
     if note_kind=='create_note':
         sample=next((d for d in sorted(paths) if not d.endswith('/index.tex')),None)
         if sample:

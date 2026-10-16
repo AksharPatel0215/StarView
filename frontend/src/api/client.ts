@@ -99,3 +99,19 @@ export const moveFile=(name:string,source:string,target:string)=>request<{path:s
 export const deleteFile=(name:string,source:string)=>request<TrashItem>(`${projectPath(name)}/file-actions/delete`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source})});
 export const getTrash=(name:string)=>request<TrashItem[]>(`${projectPath(name)}/trash`);
 export const restoreFile=(name:string,id:string)=>request<{path:string}>(`${projectPath(name)}/trash/${id}/restore`,{method:'POST'});
+
+export type AgentChange={kind:'create_note'|'update_note'|'connect'|'disconnect'|'label_connection';path:string;content:string;source:string;target:string;labels:string[];reason:string};
+export type AgentProposal={id:string;status:string;created_at:string;answer:string;citations:string[];changes:AgentChange[];before:Record<string,string|null>;before_edges?:DocumentLink[]};
+export type AgentSource={path:string;title:string;line_start:number;line_end:number;excerpt:string};
+export type AgentReply={answer:string;citations:string[];sources:AgentSource[];proposal:AgentProposal|null;model:string;timing?:{elapsed_seconds:number;prompt_tokens:number|null;output_tokens:number|null}};
+export type AgentStatus={available:boolean;models:string[];default_model:string;message:string};
+export const getAgentStatus=()=>request<AgentStatus>('/agent/status');
+export const getAgentProposals=(name:string)=>request<AgentProposal[]>(`${projectPath(name)}/agent/proposals`);
+export const askAgent=(name:string,prompt:string,model:string,current:string,history:{role:string;content:string}[])=>request<AgentReply>(`${projectPath(name)}/agent/chat`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,model,current,history})});
+export const reviewAgentProposal=(name:string,id:string,approve:boolean,changes?:AgentChange[])=>request<AgentProposal>(`${projectPath(name)}/agent/proposals/${id}/${approve?'approve':'reject'}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(approve?{changes}: {})});
+
+export async function previewAgentDraft(name:string,path:string,content:string):Promise<Blob>{
+ const response=await fetch(`${API_URL}/api${projectPath(name)}/agent/preview`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json',...(csrf?{'X-CSRF-Token':csrf}:{})},body:JSON.stringify({path,content})});
+ if(!response.ok){const data=await response.json();throw new Error(typeof data.detail==='string'?data.detail:data.detail?.stdout||data.detail?.stderr||'Could not preview this draft');}
+ return response.blob();
+}
