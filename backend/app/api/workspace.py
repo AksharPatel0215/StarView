@@ -90,3 +90,16 @@ def preview(name: str, id: str, request: Request, pdf: bool = False):
     if pdf:
         raise HTTPException(400, 'This resource is not a PDF')
     return result
+
+class Card(BaseModel):
+    id:str=Field(min_length=1,max_length=64)
+    kind:str
+    front:str=Field(min_length=1,max_length=20000)
+    back:str=Field(min_length=1,max_length=20000)
+    labels:list[str]|None=Field(default=None,max_length=16)
+class CardsUpdate(BaseModel):
+    id:str
+    cards:list[Card]=Field(max_length=2000)
+@router.put('/flashcards')
+def save_flashcards(name:str,body:CardsUpdate):
+    return safe(lambda:store(name).save_cards(body.id,[card.model_dump(exclude_none=True) for card in body.cards]))

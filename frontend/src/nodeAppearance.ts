@@ -1,17 +1,19 @@
 import type {DocumentNode} from './api/client';
-export type NodeRole='workspace'|'section'|'note';
+export type NodeRole='workspace'|'topic'|'section'|'note';
 export type NodeMode='background'|'preview'|'foreground';
 export function nodeRole(node:Pick<DocumentNode,'path'|'tags'|'kind'>):NodeRole {
  const override=node.tags.map(tag=>tag.toLowerCase().trim()).find(tag=>['workspace','section','note'].includes(tag));
  if(override)return override as NodeRole;
+ if(node.tags.includes('graph-role:topic'))return 'topic';
+ if(node.tags.includes('graph-role:section'))return 'section';
  if(node.kind==='dashboard')return 'workspace';
  if(node.path.endsWith('/index.tex')||node.tags.includes('overview'))return 'section';
  return 'note';
 }
 const ranges:Record<NodeMode,Record<NodeRole,[number,number]>>={
- background:{workspace:[8,10],section:[5,7],note:[2.5,4.5]},
- preview:{workspace:[13,16],section:[8,11],note:[5,7]},
- foreground:{workspace:[20,24],section:[14,18],note:[8,12]},
+ background:{workspace:[3.2,4],topic:[2.7,3],section:[2,2.5],note:[1,1.7]},
+ preview:{workspace:[13,16],topic:[11.5,12.5],section:[8,11],note:[5,7]},
+ foreground:{workspace:[22,26],topic:[19,21],section:[14,18],note:[8,12]},
 };
 export function nodeRadius(node:Pick<DocumentNode,'path'|'tags'|'kind'>,connections:number,mode:NodeMode){
  const [low,high]=ranges[mode][nodeRole(node)];

@@ -118,11 +118,11 @@ class KnowledgeGraph:
                 links.append(entry)
         workspace_nodes = WorkspaceNodes(self.root).read()['nodes']
         for node in workspace_nodes:
-            documents.append({'path': node['id'], 'title': node['title'], 'is_main': False, 'tags': [node['kind'].title()], 'kind': node['kind']})
+            documents.append({'path': node['id'], 'title': node['title'], 'is_main': False, 'tags': [node['kind'].title(), 'graph-role:' + ({'root': 'workspace', 'topic': 'topic', 'section': 'section'}.get(node.get('level'), 'workspace') if node['kind'] == 'dashboard' else node['kind'])], 'kind': node['kind']})
         all_paths = {document['path'] for document in documents}
         for node in workspace_nodes:
             for target in node['targets']:
-                links.append({'source': node['id'], 'target': target, 'missing': target not in all_paths, 'kind': 'workspace', 'labels': ['summarizes' if node['kind'] == 'dashboard' else 'supports']})
+                links.append({'source': node['id'], 'target': target, 'missing': target not in all_paths, 'kind': 'workspace', 'labels': [({'root': 'contains topic', 'topic': 'contains section'}.get(node.get('level')) or {'idea': 'introduces', 'theorem': 'states', 'method': 'develops', 'example': 'illustrates', 'guide': 'organizes'}.get(node.get('roles', {}).get(target), 'contains idea')) if node['kind'] == 'dashboard' else 'practices' if node['kind']=='flashcards' else 'supports']})
         overrides = {(edge["source"], edge["target"]): edge for edge in style["edges"]}
         for link in links:
             if metadata := overrides.get((link["source"], link["target"])):

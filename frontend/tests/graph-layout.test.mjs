@@ -6,7 +6,7 @@ import ts from 'typescript';
 // without native TypeScript stripping.
 const source = fs.readFileSync(new URL('../src/graphLayout.ts', import.meta.url), 'utf8');
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
-const { createLayout, stepLayout, fitLayout, neighborhood, placeCaptions, arrangeNeighborhood, previewNeighbors, placePreviewNodes, clearPreviewPath, advanceBackground, importanceRadius, starField, projectBackground } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+const { createLayout, arrangePath, isPathEdge, stepLayout, fitLayout, frameNeighborhood, neighborhood, placeCaptions, placeGraphCaptions, arrangeNeighborhood, arrangeReadableNeighborhood, previewNeighbors, placePreviewNodes, clearPreviewPath, advanceBackground, importanceRadius, starField, projectBackground, reframeBackground, previewRoute, pointOnRoute, previewCameraFor } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 
 test('a dense connected graph settles with finite coordinates and readable node separation', () => {
   const nodes = Array.from({ length: 24 }, (_, i) => ({ path: `cluster-${i % 4}/note-${i}.tex` }));
@@ -86,8 +86,8 @@ test('preview placement clears foreground nodes and stays inside the visible map
  const nodes=createLayout([{path:'center'},{path:'left'},{path:'right'}]);
  nodes[0].x=0;nodes[0].y=0;nodes[1].x=-100;nodes[1].y=0;nodes[2].x=100;nodes[2].y=0;
  const camera={x:350,y:250,scale:1};
- const placed=placePreviewNodes(['a','b','c','d','e','f'],nodes[0],nodes,new Set(nodes.map(n=>n.id)),camera,700,500);
- assert.equal(placed.size,6);
+ const placed=placePreviewNodes(['a','b','c'],nodes[0],nodes,new Set(nodes.map(n=>n.id)),camera,700,500);
+ assert.equal(placed.size,3);
  for(const p of placed.values()){for(const n of nodes)assert.ok(Math.hypot(p.x-n.x,p.y-n.y)>=60);assert.ok(p.x+350>=65&&p.x+350<=635);}
  const safe=clearPreviewPath({x:0,y:0},[nodes[0]],50);assert.ok(Math.hypot(safe.x,safe.y)>=50);
 });
@@ -139,5 +139,126 @@ test('background stars keep screen positions during independent camera animation
   assert.ok(Math.abs(p.x*camera.scale+camera.x-240)<.00001);
   assert.ok(Math.abs(p.y*camera.scale+camera.y-180)<.00001);
   assert.deepEqual(projected.get('foreground'),points[1]);
+ }
+});
+
+test('wide resize preserves star identity and drift offsets without reclumping',()=>{
+ const paths=Array.from({length:40},(_,i)=>'note-'+i),from={width:420,height:600},to={width:1800,height:600};
+ const stars=starField(paths,from.width,from.height);for(const star of stars.values()){star.x+=8;star.y-=4;}
+ reframeBackground(stars,paths,from,to);const homes=starField(paths,to.width,to.height);
+ for(const id of paths){assert.ok(Math.abs(stars.get(id).x-homes.get(id).x-8)<1e-8);assert.ok(Math.abs(stars.get(id).y-homes.get(id).y+4)<1e-8);}
+ assert.ok(Math.max(...[...stars.values()].map(p=>p.x))>1500);
+});
+test('labels clear large nodes on wide and narrow canvases',()=>{
+ for(const width of [420,1800]){
+  const node={id:'hub',title:'Complex Analysis Overview',x:width/2,y:180,radius:72,priority:10000};
+  const caption=placeCaptions([node],width,600).get('hub');assert.ok(caption);
+  assert.ok(caption.y-13>=node.radius+10 || caption.y+caption.lines.length*17<=-node.radius-5 || Math.abs(caption.x)>node.radius);
+ }
+});
+
+test('candidate routes stay continuous and clear obstacles throughout the transition',()=>{
+ const obstacles=[{id:'center',x:0,y:0,vx:0,vy:0}],route=previewRoute({x:-150,y:0},{x:150,y:0},obstacles,64);
+ let previous=pointOnRoute(route,0);
+ for(let i=1;i<=200;i++){const p=pointOnRoute(route,i/200);assert.ok(Math.hypot(p.x,p.y)>=63.99);assert.ok(Math.hypot(p.x-previous.x,p.y-previous.y)<5);previous=p;}
+ assert.deepEqual(pointOnRoute(route,1),{x:150,y:0});
+});
+test('dense enlarged groups retain every label, including fallback labels',()=>{
+ const items=Array.from({length:14},(_,i)=>({id:'node'+i,title:'Complex Analysis Concept '+i,x:180+(i%4)*12,y:180+Math.floor(i/4)*12,radius:25,priority:14-i}));
+ const captions=placeCaptions(items,420,600);assert.equal(captions.size,items.length);
+ for(const label of captions.values())assert.ok(Number.isFinite(label.x)&&Number.isFinite(label.y)&&label.lines.length>0);
+ const single=[{id:'a',title:'A stable label',x:200,y:200,radius:25,priority:1}];const first=placeCaptions(single,600,600);
+ const second=placeCaptions([{...single[0],x:201}],600,600,first);assert.deepEqual(first.get('a'),second.get('a'));
+});
+
+test('hover candidates cannot displace the selected neighborhood labels',()=>{
+ const base=[{id:'selected',title:'Selected concept',x:250,y:180,radius:40,priority:9000},{id:'neighbor',title:'Neighbor concept',x:440,y:250,radius:25,priority:5}];
+ const original=placeGraphCaptions(base,new Set(),700,600);
+ let previous=original;
+ for(let i=0;i<30;i++){
+  const items=[...base,{id:'candidate',title:'Hover candidate',x:250+i*6,y:225,radius:9,priority:1}];
+  const next=placeGraphCaptions(items,new Set(['candidate']),700,600,previous);
+  for(const item of base)assert.deepEqual(next.get(item.id),original.get(item.id));
+  assert.ok(next.has('candidate'));previous=next;
+ }
+ const released=placeGraphCaptions(base,new Set(),700,600,previous);
+ for(const item of base)assert.deepEqual(released.get(item.id),original.get(item.id));
+});
+
+test('readable neighborhoods use wide canvases without moving unrelated stars',()=>{
+ const links=Array.from({length:8},(_,i)=>({source:'root',target:'neighbor'+i}));
+ const nodes=createLayout([{path:'root'},...links.map(l=>({path:l.target})),{path:'background'}]);
+ const background={...nodes.find(n=>n.id==='background')};
+ arrangeReadableNeighborhood(nodes,links,'root',1400,700);
+ const neighbors=nodes.filter(n=>n.id.startsWith('neighbor'));
+ assert.ok(Math.max(...neighbors.map(n=>n.x))-Math.min(...neighbors.map(n=>n.x))>1000);
+ assert.deepEqual(nodes.find(n=>n.id==='background'),background);
+});
+test('candidate placement stays within its actual anchor neighborhood',()=>{
+ const anchor={id:'anchor',x:0,y:0,vx:0,vy:0},camera={x:500,y:300,scale:1};
+ const targets=placePreviewNodes(['a','b','c'],anchor,[anchor],new Set(['anchor']),camera,1000,650);
+ assert.equal(targets.size,3);
+ for(const p of targets.values())assert.ok(Math.hypot(p.x-anchor.x,p.y-anchor.y)<=220.01);
+ const points=[...targets.values()];for(let i=0;i<points.length;i++)for(let j=i+1;j<points.length;j++)assert.ok(Math.hypot(points[i].x-points[j].x,points[i].y-points[j].y)>=115);
+});
+
+test('hover camera centers the actual anchor and candidates point away from the selected node',()=>{
+ for(const selected of [{x:-250,y:0},{x:250,y:0}]){
+  const anchor={id:'anchor',x:0,y:0,vx:0,vy:0};
+  const camera=previewCameraFor(anchor,{x:12,y:40,scale:1},1000,650);
+  assert.equal(anchor.x*camera.scale+camera.x,500);assert.equal(anchor.y*camera.scale+camera.y,300);
+  const nodes=[anchor,{id:'selected',...selected,vx:0,vy:0}];
+  const candidates=placePreviewNodes(['a','b','c'],anchor,nodes,new Set(['anchor','selected']),camera,1000,650,selected);
+  assert.equal(candidates.size,3);
+  for(const p of candidates.values()){
+   assert.ok((p.x-anchor.x)*(anchor.x-selected.x)+(p.y-anchor.y)*(anchor.y-selected.y)>0);
+   assert.ok(Math.hypot(p.x-anchor.x,p.y-anchor.y)<=165.01);
+  }
+ }
+});
+
+test('selected neighborhood framing keeps top and bottom nodes and halos inside short canvases',()=>{
+ for(const [width,height] of [[480,340],[400,220],[900,600]]){
+  const nodes=createLayout(Array.from({length:9},(_,i)=>({path:String(i)})));
+  const links=nodes.slice(1).map(node=>({source:'0',target:node.id}));
+  arrangeReadableNeighborhood(nodes,links,'0',width,height);
+  const camera=frameNeighborhood(nodes,'0',width,height);
+  for(const node of nodes){const x=node.x*camera.scale+camera.x,y=node.y*camera.scale+camera.y;assert.ok(x>=54&&x<=width-54);assert.ok(y>=59&&y<=height-59);}
+ }
+});
+
+test('agent foreground uses the exact normal ring arrangement with a different node set',()=>{
+ const initial=createLayout(Array.from({length:15},(_,i)=>({path:String(i)})));
+ const links=initial.slice(1,4).map(n=>({source:'0',target:n.id}));
+ const normal=initial.map(n=>({...n})),same=initial.map(n=>({...n}));
+ arrangeReadableNeighborhood(normal,links,'0',600,350);
+ arrangeReadableNeighborhood(same,links,'0',600,350,new Set(['0','1','2','3']));
+ assert.deepEqual(same,normal);
+ const focused=new Set(initial.slice(0,12).map(n=>n.id));
+ const agent=initial.map(n=>({...n}));
+ arrangeReadableNeighborhood(agent,links,'0',600,350,focused);
+ for(const n of agent.filter(n=>!focused.has(n.id)))assert.deepEqual(n,initial.find(p=>p.id===n.id));
+ for(const n of agent.slice(1,12))assert.notDeepEqual({x:n.x,y:n.y},{x:initial.find(p=>p.id===n.id).x,y:initial.find(p=>p.id===n.id).y});
+ const cam=frameNeighborhood(agent.filter(n=>focused.has(n.id)),'0',600,350);
+ for(const n of agent.filter(n=>focused.has(n.id))){const y=n.y*cam.scale+cam.y;assert.ok(y>=59&&y<=291);}
+});
+
+test('long paths follow a wave in order and keep background positions intact',()=>{
+ const nodes=createLayout(Array.from({length:10},(_,i)=>({path:String(i)})));const paths=['5','1','7','2','9','3','4'];const before=nodes.filter(n=>!paths.includes(n.id)).map(n=>({...n}));
+ const camera=arrangePath(nodes,paths,650,350);
+ const route=paths.map(id=>nodes.find(n=>n.id===id));
+ for(let i=0;i<route.length;i++){assert.ok(route[i].y*camera.scale+camera.y>=69&&route[i].y*camera.scale+camera.y<=281);if(i)assert.equal(route[i].x-route[i-1].x,120);const x=route[i].x*camera.scale+camera.x;assert.ok(x>=59&&x<=591);}
+ assert.deepEqual(nodes.filter(n=>!paths.includes(n.id)),before);
+ for(let i=0;i<paths.length-1;i++){assert.ok(isPathEdge(paths,paths[i],paths[i+1]));assert.ok(isPathEdge(paths,paths[i+1],paths[i]));}
+ assert.equal(isPathEdge(paths,paths[0],paths[3]),false);assert.equal(isPathEdge(paths,paths[0],'0'),false);
+});
+
+test('short paths stay straight while longer paths spread vertically within the canvas',()=>{
+ let previous=0;
+ for(const count of [2,3,5,8]){
+ const nodes=createLayout(Array.from({length:count},(_,i)=>({path:String(i)})));const camera=arrangePath(nodes,nodes.map(n=>n.id),700,400);
+ const ys=nodes.map(n=>n.y*camera.scale+camera.y);const spread=Math.max(...ys)-Math.min(...ys);
+ if(count<=3)assert.equal(spread,0);else assert.ok(spread>previous);previous=spread;
+ for(const y of ys)assert.ok(y>=69&&y<=331);
  }
 });

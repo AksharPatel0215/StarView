@@ -1,4 +1,9 @@
-import { Fragment, lazy, Suspense, useEffect, useRef, useState } from "react";
+import WorkspaceExplorer from './components/WorkspaceExplorer';
+import DraftDocument from './components/DraftDocument';
+import {responsePaths,sceneGraph} from './agentScene';
+import type {AgentScene} from './agentScene';
+import type {AgentReply,AgentProposal} from './api/client';
+import { useMemo, lazy, Suspense, useEffect, useRef, useState } from "react";
 const Editor = lazy(() => import("./components/LocalEditor"));
 import { labelConnection, setGraphColor, chooseFolder, getTags, updateTags, browseDirectories, compileProjectFile, getPdfUrl, getConnections, connectDocuments, getAssetUrl, getProjectFile, getProjectFiles, getProjects, openProject, saveProjectFile } from "./api/client";
 import type { FileLabels, DirectoryListing, Project, KnowledgeGraph } from "./api/client";
@@ -6,17 +11,22 @@ import FileActionsDialog from "./components/FileActionsDialog";
 import Trash from "./components/Trash";
 import {moveFile,deleteFile} from "./api/client";
 import {DocumentSaveQueue,moveDestination} from './documentFlow';
+import FlashcardSet from './components/FlashcardSet';
+import {closePagePlan} from './workspaceNavigation';
+import NavIcon from './components/NavIcon';
 import AgentPanel from './components/AgentPanel';
-import ToolDivider from './components/ToolDivider';
+import DockWorkspace from './components/DockWorkspace';
+import ResizeHandle from './components/ResizeHandle';
 import ToolPicker from './components/ToolPicker';
-import {restoreTools,addTool,toolNames} from './panelLayout';
+import {restoreTools,addTool} from './panelLayout';
+import './docking.css';
+import './fixed-panels.css';
 import type {PanelMode,Tool} from './panelLayout';
 import Settings from "./components/Settings";
 import {usePreferences} from "./preferences";
 import CompactMenu from "./components/CompactMenu";
 import NewDocument from "./components/NewDocument";
 import { createProjectFile } from "./api/client";
-import FileTree from "./components/FileTree";
 import Connections from "./components/Connections";
 import Dashboard from "./components/Dashboard";
 import DataViewer from "./components/DataViewer";
@@ -39,10 +49,10 @@ function App() {
   useEffect(()=>{if(new URLSearchParams(window.location.search).has('account')){const url=new URL(window.location.href);url.searchParams.delete('account');window.history.replaceState(null,'',url.pathname+url.search+url.hash);}},[]);
   const [nodes,setNodes] = useState<WorkspaceNode[]>([]);
   const [activeNode,setActiveNode] = useState<WorkspaceNode|null>(null);
-  const [center,setCenter] = useState<'editor'|'dashboard'|'data'>('dashboard');
-  const [nodeEditor,setNodeEditor] = useState<{kind:'dashboard'|'data';node:WorkspaceNode|null}|null>(null);
+  const [center,setCenter] = useState<'editor'|'dashboard'|'data'|'flashcards'>('dashboard');
+  const [nodeEditor,setNodeEditor] = useState<{kind:'dashboard'|'data'|'flashcards';node:WorkspaceNode|null}|null>(null);
   const [statsVersion,setStatsVersion] = useState(0);
-  const [,setTabs] = useState<string[]>([]);
+  const [tabs,setTabs] = useState<string[]>([]);
   const [layout,setLayout] = useState(() => {
     const defaults={sidebar:true,editor:true,preview:false,sidebarWidth:250,previewWidth:430};
     try {const saved=JSON.parse(localStorage.getItem('starview-layout')||'null');return saved?{sidebar:!!saved.sidebar,editor:saved.editor!==false,preview:!!saved.preview,sidebarWidth:Math.max(180,Math.min(420,Number(saved.sidebarWidth)||250)),previewWidth:Math.max(280,Math.min(800,Number(saved.previewWidth)||430))}:defaults;}catch{return defaults;}
@@ -50,8 +60,8 @@ function App() {
   useEffect(()=>{localStorage.setItem('starview-layout',JSON.stringify(layout));},[layout]);
 
   async function reloadNodes(){if(project)setNodes(await getWorkspaceNodes(project.name));}
-  async function openNode(path:string){openTool('latex');const node=nodes.find(item=>item.id===path);if(node){if(dirty&&project){try{await persistFile(project.name,selectedFile,fileContent);setSavedContent(fileContent);}catch(e){setError(message(e));return;}}setActiveNode(node);setCenter(node.kind==='dashboard'?'dashboard':'data');setLayout(current=>({...current,editor:true}));}else{void selectFile(path);}}
-  async function saveNode(value:{title:string;kind:'dashboard'|'data';targets:string[];resource?:{provider:string;id:string}}){if(!project)return;const next=nodeEditor?.node?await updateWorkspaceNode(project.name,{...nodeEditor.node,title:value.title,targets:value.targets}):await createWorkspaceNode(project.name,value);await reloadNodes();loadGraph(await getConnections(project.name));setActiveNode(next);setCenter(next.kind==='dashboard'?'dashboard':'data');setStatsVersion(current=>current+1);}
+  async function openNode(path:string){if(busy||loadingFile)return;openTool('latex');const node=nodes.find(item=>item.id===path);if(node){if(dirty&&project){try{await persistFile(project.name,selectedFile,fileContent);setSavedContent(fileContent);}catch(e){setError(message(e));return;}}setTabs(previous=>previous.includes(path)?previous:[...previous,path]);setActiveNode(node);setCenter(node.kind==='dashboard'?'dashboard':node.kind==='flashcards'?'flashcards':'data');setLayout(current=>({...current,editor:true}));}else{if(path.startsWith('@node/')){setError('This workspace page is no longer available.');return;}return selectFile(path);}}
+  async function saveNode(value:{title:string;kind:'dashboard'|'data'|'flashcards';targets:string[];resource?:{provider:string;id:string}}){if(!project)return;if(dirty){await persistFile(project.name,selectedFile,fileContent);setSavedContent(fileContent);}openTool('latex');const next=nodeEditor?.node?await updateWorkspaceNode(project.name,{...nodeEditor.node,title:value.title,targets:value.targets}):await createWorkspaceNode(project.name,value);await reloadNodes();loadGraph(await getConnections(project.name));setTabs(previous=>previous.includes(next.id)?previous:[...previous,next.id]);setActiveNode(next);setCenter(next.kind==='dashboard'?'dashboard':next.kind==='flashcards'?'flashcards':'data');setStatsVersion(current=>current+1);}
   const [tags, setTags] = useState<FileLabels>({});
   const [fileSearch, setFileSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("");
@@ -60,18 +70,24 @@ function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   useEffect(()=>{let active=true;setNodes([]);setActiveNode(null);setCenter('dashboard');setTabs([]);if(project)getWorkspaceNodes(project.name).then(value=>{if(active)setNodes(value);}).catch(e=>setError(message(e)));return()=>{active=false;};},[project]);
+  const [notesQueryHasResult,setNotesQueryHasResult]=useState(true);
+  const [retrievingNotes,setRetrievingNotes]=useState(false);
+  const [agentScene,setAgentScene]=useState<AgentScene|null>(null);
+  const [sceneVersion,setSceneVersion]=useState(0);
+  useEffect(()=>{setAgentScene(null);},[project]);
   const [graph, setGraph] = useState<KnowledgeGraph>({ documents: [], links: [] });
   const [newDocument,setNewDocument] = useState(false);
   const [showAllFiles, setShowAllFiles] = useState(false);
-  const [tools,setTools]=useState(()=>restoreTools(localStorage.getItem('starview-tools')));
-  const [toolWidths,setToolWidths]=useState<Record<Tool,number>>(()=>{try{const v=JSON.parse(localStorage.getItem('starview-tool-widths')||'{}');return {latex:Number(v.latex)>0?Number(v.latex):1,agent:Number(v.agent)>0?Number(v.agent):1,graph:Number(v.graph)>0?Number(v.graph):1};}catch{return {latex:1,agent:1,graph:1};}});
+  const [tools,setTools]=useState<Tool[]>(()=>localStorage.getItem('starview-fixed-layout')==='1'?restoreTools(localStorage.getItem('starview-tools')):['latex','graph','agent']);
   const [latexMode,setLatexMode]=useState<'read'|'write'>(()=>localStorage.getItem('starview-latex-mode')==='read'?'read':'write');
+  const [focusedTool,setFocusedTool]=useState<Tool|null>(null);
   const [toolPicker,setToolPicker]=useState(false);
+  const [dockReset,setDockReset]=useState(0);
   const reading=tools.includes('latex')&&latexMode==='read';
   const view=reading?'page':'write';
-  function openTool(tool:Tool){setTools(previous=>addTool(previous,tool));setToolPicker(false);}
+  function openTool(tool:Tool){setTools(previous=>addTool(previous,tool));setToolPicker(false);setFocusedTool(null);}
   function setView(mode:'write'|'page'){openTool('latex');setLatexMode(mode==='page'?'read':'write');}
-  useEffect(()=>{localStorage.setItem('starview-tools',JSON.stringify(tools));localStorage.setItem('starview-tool-widths',JSON.stringify(toolWidths));localStorage.setItem('starview-latex-mode',latexMode);},[tools,toolWidths,latexMode]);
+  useEffect(()=>{localStorage.setItem('starview-tools',JSON.stringify(tools));localStorage.setItem('starview-latex-mode',latexMode);},[tools,latexMode]);
   const [renderedSource,setRenderedSource]=useState("");
   const renderRequest=useRef(0);
   const renderCache=useRef(new Map<string,{content:string;pdf:string;version:number}>());
@@ -257,6 +273,7 @@ function App() {
   }
 
   async function selectFile(path:string){
+    setNotesQueryHasResult(true);
     openTool('latex');
     if(path.startsWith('@node/')){openNode(path);return;}
     if(!project||busy||loadingFile)return;
@@ -354,20 +371,33 @@ function App() {
   const activePath = selectedFile || assetPath || pdfPath;
   const activeTags = tags[activePath];
   const visibleFiles = files.filter(file => (!tagFilter || (tags[file] && [tags[file].folder, ...tags[file].custom].includes(tagFilter))) && `${file} ${tags[file]?.custom.join(" ") || ""}`.toLowerCase().includes(fileSearch.trim().toLowerCase()));
+  const agentGraph=useMemo(()=>agentScene?sceneGraph(graph,agentScene):null,[graph,agentScene]);
+  const draftNote=agentScene?.proposal?.changes.find(change=>change.kind==='create_note'||change.kind==='update_note');
+  function previewProposal(proposal:AgentProposal|null){setAgentScene(previous=>proposal?{paths:proposal.citations,proposal}:previous?{paths:previous.paths,proposal:null}:null);setSceneVersion(v=>v+1);if(proposal){openTool('latex');openTool('graph');}}
+  function showAgentResponse(prompt:string,reply:AgentReply){setNotesQueryHasResult(true);setRetrievingNotes(false);const paths=responsePaths(prompt,reply,graph);setAgentScene(paths.length||reply.proposal?{paths,proposal:reply.proposal,exactPath:!!reply.concept_path}:null);setSceneVersion(v=>v+1);openTool('graph');if(reply.proposal){openTool('latex');}else if(paths[0]){setTabs(paths);setLatexMode('read');void selectFile(paths[0]);}}
   const filteredGraph = tagFilter ? { ...graph, documents: graph.documents.filter(node => node.tags.includes(tagFilter)), links: graph.links.filter(link => graph.documents.find(node => node.path === link.source)?.tags.includes(tagFilter) && graph.documents.find(node => node.path === link.target)?.tags.includes(tagFilter)) } : graph;
   const documents = visibleFiles.filter(file => /\.tex$/i.test(file));
   const resources = visibleFiles.filter(file => /\.(bib|bst|sty|cls|png|jpe?g|gif|webp|svg|eps)$/i.test(file));
   const pdfs = visibleFiles.filter(file => /\.pdf$/i.test(file) && !documents.some(source => source.slice(0, -4) === file.slice(0, -4) || source.split("/").pop()?.slice(0, -4) === file.slice(0, -4)));
   const otherFiles = visibleFiles.filter(file => !documents.includes(file) && !resources.includes(file) && !pdfs.includes(file));
 
+  const currentPage=center==='editor'?actionPath:activeNode?.id||'@home';
+  const pageTitle=(path:string)=>graph.documents.find(doc=>doc.path===path)?.title||nodes.find(node=>node.id===path)?.title||path.split('/').pop()?.replace(/\.tex$/,'')||'Page';
+  async function goHome(){setNotesQueryHasResult(true);if(busy||loadingFile)return;try{if(dirty&&project){await persistFile(project.name,selectedFile,fileContent);setSavedContent(fileContent);}openTool('latex');setActiveNode(null);setCenter('dashboard');}catch(e){setError(message(e));}}
+  function closeTool(tool:Tool){setTools(previous=>previous.filter(t=>t!==tool));if(focusedTool===tool)setFocusedTool(null);}
+  async function closePage(path:string){try{if(path===currentPage&&dirty&&project){await persistFile(project.name,selectedFile,fileContent);setSavedContent(fileContent);}const plan=closePagePlan(tabs,currentPage,path);if(plan.next==='@home')await goHome();else if(plan.next)await openNode(plan.next);setTabs(plan.tabs);}catch(e){setError(message(e));}}
   function renderPanel(mode:PanelMode,visible:boolean) {return <>
-    {mode==='graph'&&<div className="pane-graph-holder"><div className="studio-graph"><Connections visible={visible && mode==='graph'} key={(project?.name||'empty')+':graph'} graph={filteredGraph} selected={activeNode?.id||selectedFile} busy={busy||loadingFile} onOpen={openNode} onConnect={(source,target,remove)=>void connect(source,target,remove)} onLabel={labelEdge} onColor={colorGraph}/></div></div>}
-    {mode!=='graph'&&(<section className="studio-content" aria-label={`${mode==='write'?'Write':'Read'} document`}>
-        <div className="studio-document-bar"><span>{activeNode?.title||graph.documents.find(node=>node.path===actionPath)?.title||actionPath.split('/').pop()?.replace(/\.tex$/,'')||'Workspace'}</span>{activePath&&center==='editor'&&<CompactMenu label="Document details">
+    {mode==='graph'&&<div className="pane-graph-holder"><div className="studio-graph">{agentScene&&<div className="agent-scene-bar"><span>{agentScene.proposal?'Proposed graph · dotted items await approval':'Agent sources & connecting paths'}</span><button onClick={()=>setAgentScene(null)}>Clear focus</button></div>}<Connections visible={visible && mode==='graph'} key={(project?.name||'empty')+':graph'} pathNodes={agentScene?.exactPath?agentScene.paths:undefined} focusPaths={agentGraph?.focusPaths} sceneVersion={agentScene?sceneVersion:undefined} graph={agentGraph||filteredGraph} selected={notesQueryHasResult?(draftNote?.path||agentScene?.paths[0]||activeNode?.id||selectedFile):''} busy={busy||loadingFile} onOpen={path=>{const draft=agentScene?.proposal?.changes.find(change=>change.path===path&&(change.kind==='create_note'||change.kind==='update_note'));if(draft){setAgentScene(previous=>previous?{...previous,proposal:{...previous.proposal!,changes:[draft,...previous.proposal!.changes.filter(c=>c!==draft)]}}:previous);openTool('latex');}else{setAgentScene(null);void openNode(path);}}} onConnect={(source,target,remove)=>void connect(source,target,remove)} onLabel={labelEdge} onColor={colorGraph}/></div></div>}
+    {mode!=='graph'&&retrievingNotes&&<section className="empty-state" role="status"><p>Finding relevant notes…</p></section>}
+    {mode!=='graph'&&!retrievingNotes&&!notesQueryHasResult&&<section className="empty-state"><p>No notes to show for this query. Retry or open a note.</p></section>}
+    {mode!=='graph'&&!retrievingNotes&&notesQueryHasResult&&draftNote&&project?<section className="agent-note-preview"><svg className="draft-preview-frame" aria-hidden="true"><rect x="2" y="2" width="calc(100% - 4px)" height="calc(100% - 4px)" rx="5"/></svg><div className="agent-scene-bar provisional-banner"><span>Draft preview · not applied</span><button onClick={()=>setAgentScene(null)}>Back to notes</button></div><strong>{draftNote.path}</strong><DraftDocument key={agentScene?.proposal?.id+draftNote.path} project={project.name} path={draftNote.path} content={draftNote.content} readOnly initialMode="preview" onChange={()=>{}} onOpen={path=>void selectFile(path)}/></section>:null}
+    {mode!=='graph'&&!retrievingNotes&&notesQueryHasResult&&!draftNote&&(<section className="studio-content" aria-label={`${mode==='write'?'Write':'Read'} document`}>
+        <div className="page-navigation-row"><nav className="page-tabs" aria-label="Open documents"><button className={`page-tab-home${currentPage==='@home'?' active':''}`} aria-label="Workspace overview" title="Workspace overview" disabled={busy||loadingFile} aria-current={currentPage==='@home'?'page':undefined} onClick={()=>void goHome()}><NavIcon name="home"/></button>{tabs.map(path=><div className={`page-tab${currentPage===path?' active':''}`} key={path}><button aria-current={currentPage===path?'page':undefined} title={path.startsWith('@node/')?pageTitle(path):path} onClick={()=>void openNode(path)}>{pageTitle(path)}{path===selectedFile&&dirty&&<span className="unsaved-dot" aria-label="Unsaved changes"/>}</button><button className="page-tab-close" disabled={busy||loadingFile} aria-label={`Close ${pageTitle(path)} tab`} onClick={()=>void closePage(path)}><NavIcon name="close"/></button></div>)}</nav>
+        <div className="page-actions">{activePath&&center==='editor'&&<CompactMenu label="Document actions" iconOnly>
           <p className="project-root">{actionPath}</p><button onClick={()=>setFileAction({path:actionPath,mode:'move'})}>Rename / move</button><button onClick={()=>setFileAction({path:actionPath,mode:'delete'})}>Delete</button>
           {activeTags&&<><p>Labels</p><div className="file-tags">{activeTags.custom.map(tag=><button key={tag} onClick={()=>void editTags(activeTags.custom.filter(item=>item!==tag))}>{tag} ×</button>)}<form onSubmit={event=>{event.preventDefault();if(tagDraft.trim())void editTags([...activeTags.custom,tagDraft.trim()]);}}><input aria-label="New tag" value={tagDraft} onChange={event=>setTagDraft(event.target.value)} placeholder="Add label…"/><button disabled={!tagDraft.trim()}>Add</button></form></div></>}
-        </CompactMenu>}{activeNode&&<button className="subtle-control" onClick={()=>setNodeEditor({kind:activeNode.kind,node:activeNode})}>{activeNode.kind==='dashboard'?'Edit dashboard':'Edit resource'}</button>}</div>
-        {project&&center!=='editor'?center==='data'&&activeNode?<DataViewer project={project.name} node={activeNode} connections={graph.documents.filter(item=>activeNode.targets.includes(item.path))} onOpen={openNode}/>:<Dashboard documents={graph.documents} project={project.name} node={activeNode} refresh={statsVersion} resources={graph.documents.filter(item=>item.kind==='data'&&(!activeNode||activeNode.targets.includes(item.path)))} onOpen={path=>void selectFile(path)}/>:null}
+        </CompactMenu>}{activeNode&&<CompactMenu label="Document actions" iconOnly><button onClick={()=>setNodeEditor({kind:activeNode.kind,node:activeNode})}>Details & connections</button></CompactMenu>}</div></div>
+        {project&&center!=='editor'?center==='flashcards'&&activeNode?<FlashcardSet key={activeNode.id} project={project.name} node={activeNode} topics={graph.documents.filter(doc=>activeNode.targets.includes(doc.path)).map(doc=>doc.title)} onSaved={node=>{setActiveNode(node);setNodes(previous=>previous.map(n=>n.id===node.id?node:n));}}/>:center==='data'&&activeNode?<DataViewer project={project.name} node={activeNode} connections={graph.documents.filter(item=>activeNode.targets.includes(item.path))} onOpen={openNode}/>:<Dashboard documents={graph.documents} project={project.name} node={activeNode} refresh={statsVersion} resources={graph.documents.filter(item=>item.kind==='data'&&(!activeNode||activeNode.targets.includes(item.path)))} nodes={nodes} onOpen={path=>void openNode(path)}/>:null}
         {mode==='write'&&center==='editor'&&(selectedFile?<div className="editor-body studio-writing"><Suspense fallback={<p className="reader-loading">Opening editor…</p>}><Editor documents={graph.documents} documentPath={selectedFile} height="100%" path={`${project?.name}/${selectedFile}?tool=latex`} language={selectedFile.toLowerCase().endsWith(".tex") ? "latex" : "plaintext"} theme="starview" onMount={(editor, monaco) => {
             function followAt(position: import("monaco-editor").IPosition) {
               const model = editor.getModel(); if (!model) return;
@@ -389,49 +419,41 @@ function App() {
     renderCache.current.clear();
     if(project&&selectedFile&&paths.includes(selectedFile)) {const content=await getProjectFile(project.name,selectedFile);setFileContent(content);setSavedContent(content);setPdfPath('');setRenderedSource('');}
     await refresh();
+    setAgentScene(null);
+    if(paths[0])await selectFile(paths[0]);
   }
 
   return <div className="app studio-app">
     <header className="studio-header">
-      <button className="sidebar-toggle" aria-label={layout.sidebar?'Hide files':'Show files'} aria-pressed={layout.sidebar} onClick={()=>setLayout(current=>({...current,sidebar:!current.sidebar}))}>☰</button>
-      <button className="studio-brand" onClick={()=>{setActiveNode(nodes.find(node=>node.kind==='dashboard')||null);setCenter('dashboard');setView('write');}}>✳ <span>{project?.name||'StarView'}</span></button>
-      <div className="workspace-actions">{tools.length>0&&tools.length<3&&<button aria-expanded={toolPicker} onClick={()=>setToolPicker(value=>!value)}>Add tool</button>}</div>
-      <button className="settings-toggle" aria-label="Settings" onClick={()=>setSettingsOpen(true)}>⚙</button>
+      <button className="nav-icon-button" aria-label={layout.sidebar?'Hide sidebar':'Show sidebar'} title={layout.sidebar?'Hide sidebar':'Show sidebar'} aria-pressed={layout.sidebar} onClick={()=>setLayout(current=>({...current,sidebar:!current.sidebar}))}><NavIcon name="sidebar"/></button>
+      <button className="studio-brand" disabled={busy||loadingFile} title="Workspace overview" onClick={()=>void goHome()}><span>{project?.name||'StarView'}</span></button>
+      <button className="nav-icon-button" aria-label="Settings" title="Settings" onClick={()=>setSettingsOpen(true)}><NavIcon name="settings"/></button>
     </header>
     {accountNotice&&<p className="account-notice" role="status">{accountNotice}<button aria-label="Dismiss account notice" onClick={()=>setAccountNotice('')}>×</button></p>}
     {error&&<p className="error" role="alert">{error}<button aria-label="Dismiss error" onClick={()=>setError('')}>×</button></p>}
     <main className="studio-workspace">
-      {layout.sidebar&&<aside className="sidebar studio-sidebar">
-        <div className="sidebar-heading" onDragOver={event=>{if(event.dataTransfer.types.includes('application/x-starview-file'))event.preventDefault();}} onDrop={event=>{event.preventDefault();const path=event.dataTransfer.getData('application/x-starview-file');if(path)void moveDraggedFile(path,'');}}><span>Files</span><button aria-label="New document" disabled={!project||busy||loadingFile} onClick={()=>setNewDocument(true)}>+</button></div>
-        {project?<><input className="file-search" type="search" aria-label="Search files" placeholder="Find a note…" value={fileSearch} onChange={e=>setFileSearch(e.target.value)}/>
-          {nodes.length>0&&<div className="workspace-node-list">{nodes.map(node=><button key={node.id} className={activeNode?.id===node.id?'active':''} onClick={()=>openNode(node.id)}><span>{node.kind==='dashboard'?'◈':'▤'}</span><span>{node.title}</span></button>)}</div>}
-          <FileTree files={documents} selectedFile={selectedFile} onFileSelect={file=>void selectFile(file)} onAction={(path,mode)=>setFileAction({path,mode})} onMove={(path,folder)=>void moveDraggedFile(path,folder)} disabled={busy||loadingFile}/>
-          {!documents.length&&<p className="empty-documents">No notes yet. Use + to start.</p>}
-          {resources.length>0&&<details className="sidebar-group"><summary>Supporting files</summary><FileTree files={resources} selectedFile={assetPath} onFileSelect={file=>void selectFile(file)} onAction={(path,mode)=>setFileAction({path,mode})} onMove={(path,folder)=>void moveDraggedFile(path,folder)}/></details>}
-          {pdfs.length>0&&<details className="sidebar-group"><summary>PDFs</summary><FileTree files={pdfs} selectedFile={pdfPath} onFileSelect={file=>void selectFile(file)} onAction={(path,mode)=>setFileAction({path,mode})} onMove={(path,folder)=>void moveDraggedFile(path,folder)}/></details>}
-          {showAllFiles&&<FileTree files={otherFiles} onFileSelect={file=>void selectFile(file)} onAction={(path,mode)=>setFileAction({path,mode})} onMove={(path,folder)=>void moveDraggedFile(path,folder)}/>}
+      {layout.sidebar&&<aside className="sidebar studio-sidebar" style={{width:layout.sidebarWidth}}>
+        <div className="sidebar-heading" onDragOver={event=>{if(event.dataTransfer.types.includes('application/x-starview-file'))event.preventDefault();}} onDrop={event=>{event.preventDefault();const path=event.dataTransfer.getData('application/x-starview-file');if(path)void moveDraggedFile(path,'');}}><span>Workspace</span><CompactMenu label="Create in workspace" iconOnly icon={<NavIcon name="add"/>}><button disabled={!project||busy||loadingFile} onClick={()=>setNewDocument(true)}>New note</button><button disabled={!project} onClick={()=>setNodeEditor({kind:'flashcards',node:null})}>New flashcard set</button><button disabled={!project} onClick={()=>setNodeEditor({kind:'dashboard',node:null})}>New dashboard</button><button disabled={!project} onClick={()=>setNodeEditor({kind:'data',node:null})}>Connect data</button></CompactMenu></div>
+        {project?<><input className="file-search" type="search" aria-label="Search files" placeholder="Search workspace…" value={fileSearch} onChange={e=>setFileSearch(e.target.value)}/>
+          <WorkspaceExplorer nodes={nodes} files={[...documents,...resources,...pdfs,...(showAllFiles?otherFiles:[])]} documents={graph.documents} selected={activeNode?.id||(center==='editor'?(assetPath||selectedFile):'')} query={fileSearch} onOpen={path=>{setAgentScene(null);void openNode(path);}} onAction={(path,mode)=>setFileAction({path,mode})} onMove={(path,folder)=>void moveDraggedFile(path,folder)} disabled={busy||loadingFile}/>
         </>:<button onClick={()=>void pickFolder()}>Open workspace</button>}
       </aside>}
-      <div className="studio-panels fixed-tool-panels">
-        {tools.map((tool,index)=><Fragment key={tool}>
-          {index>0&&<ToolDivider left={toolWidths[tools[index-1]]} right={toolWidths[tool]} onChange={(left,right)=>setToolWidths(previous=>({...previous,[tools[index-1]]:left,[tool]:right}))}/>}
-          <section className="tool-window" aria-label={`${toolNames[tool]} tool`} style={{flexGrow:toolWidths[tool]}}>
-            {tool!=='agent'&&<header className="tool-header"><strong>{toolNames[tool]}</strong>{tool==='latex'&&<nav aria-label="LaTeX view">{(['read','write'] as const).map(mode=><button key={mode} aria-pressed={latexMode===mode} onClick={()=>setLatexMode(mode)}>{mode==='read'?'Read':'Write'}</button>)}</nav>}<button className="close-tool" aria-label={`Close ${toolNames[tool]} tool`} onClick={()=>setTools(previous=>previous.filter(t=>t!==tool))}>×</button></header>}
-            {tool==='agent'?(project?<AgentPanel key={project.name} project={project.name} current={selectedFile} onClose={()=>setTools(previous=>previous.filter(t=>t!=='agent'))} onOpen={path=>void selectFile(path)} beforeApply={async()=>{if(dirty&&project){await persistFile(project.name,selectedFile,fileContent);setSavedContent(fileContent);}}} onApplied={agentApplied}/>:<div className="empty-state"><h2>Agent</h2><button onClick={()=>void pickFolder()}>Open workspace</button><button onClick={()=>setTools(previous=>previous.filter(t=>t!=='agent'))}>Close</button></div>):renderPanel(tool==='graph'?'graph':latexMode,true)}
-          </section>
-        </Fragment>)}
-        {!tools.length&&<div className="empty-tools"><span>✳</span><h2>Your workspace, your tools</h2><button onClick={()=>setToolPicker(true)}>Add tool</button></div>}
-      </div>
+      {layout.sidebar&&<ResizeHandle label="Sidebar width" value={layout.sidebarWidth} min={180} max={420} onChange={sidebarWidth=>setLayout(current=>({...current,sidebarWidth}))}/>}
+      <DockWorkspace tools={tools} focused={focusedTool} onFocus={setFocusedTool} onClose={closeTool} resetVersion={dockReset}
+        controls={tool=>tool==='latex'&&center==='editor'?<nav className="page-view-toggle" aria-label="Notes view">{(['read','write'] as const).map(mode=><button key={mode} title={mode==='read'?'Read note':'Write source'} aria-label={mode==='read'?'Read note':'Write source'} aria-pressed={latexMode===mode} onClick={()=>setLatexMode(mode)}><NavIcon name={mode}/></button>)}</nav>:null}
+        render={tool=>tool==='agent'?(project?<AgentPanel onQueryEnd={()=>setRetrievingNotes(false)} onQueryStart={()=>{setNotesQueryHasResult(false);setRetrievingNotes(true);setAgentScene(null);setTabs([]);}} onResponse={showAgentResponse} onPreview={previewProposal} embedded key={project.name} project={project.name} current={selectedFile} onClose={()=>closeTool('agent')} onOpen={path=>{setAgentScene({paths:[path],proposal:null});setSceneVersion(v=>v+1);void selectFile(path);}} beforeApply={async()=>{if(dirty&&project){await persistFile(project.name,selectedFile,fileContent);setSavedContent(fileContent);}}} onApplied={agentApplied}/>:<div className="empty-state"><h2>Agent</h2><button onClick={()=>void pickFolder()}>Open workspace</button><button onClick={()=>closeTool('agent')}>Close</button></div>):renderPanel(tool==='graph'?'graph':latexMode,!focusedTool||focusedTool===tool)}
+        empty={<div className="empty-tools"><span>✳</span><h2>Your workspace, your tools</h2><button onClick={()=>setToolPicker(true)}>Add tool</button></div>}/>
     </main>
     {toolPicker&&<ToolPicker tools={tools} onAdd={openTool} onClose={()=>setToolPicker(false)}/>}
 
     {fileAction&&<FileActionsDialog path={fileAction.path} files={files} mode={fileAction.mode} onSave={actOnFile} onClose={()=>setFileAction(null)}/>}
     {trashOpen&&project&&<Trash project={project.name} onRestore={refresh} onClose={()=>setTrashOpen(false)}/>}
-    {settingsOpen&&<Settings onClose={()=>setSettingsOpen(false)} onResetLayout={()=>{setLayout({sidebar:true,editor:true,preview:false,sidebarWidth:250,previewWidth:430});setTools(['latex','graph']);setToolWidths({latex:1,agent:1,graph:1});setLatexMode('write');}}>
+    {settingsOpen&&<Settings onClose={()=>setSettingsOpen(false)} onResetLayout={()=>{setLayout({sidebar:true,editor:true,preview:false,sidebarWidth:250,previewWidth:430});setTools(['latex','graph','agent']);setFocusedTool(null);setDockReset(version=>version+1);setLatexMode('write');}}>
       <h3>Workspace</h3><label className="settings-row"><span>Current workspace</span><select aria-label="Open project" value={project?.name||''} disabled={busy||loadingFile} onChange={e=>{const next=projects.find(p=>p.name===e.target.value);if(next)void selectProject(next);}}><option value="" disabled>Select a workspace</option>{projects.map(p=><option key={p.name}>{p.name}</option>)}</select></label>
-      <div className="settings-actions"><button onClick={()=>{setSettingsOpen(false);void pickFolder();}}>Open folder…</button><button disabled={!project} onClick={()=>void refresh()}>Refresh files</button><button disabled={!project} onClick={()=>{setSettingsOpen(false);setTrashOpen(true);}}>Trash</button><button disabled={!project} onClick={()=>{setSettingsOpen(false);setNodeEditor({kind:'dashboard',node:null});}}>New dashboard</button><button disabled={!project} onClick={()=>{setSettingsOpen(false);setNodeEditor({kind:'data',node:null});}}>Connect data</button></div>
+      <div className="settings-actions"><button onClick={()=>{setSettingsOpen(false);void pickFolder();}}>Open folder…</button><button disabled={!project} onClick={()=>void refresh()}>Refresh files</button><button disabled={!project} onClick={()=>{setSettingsOpen(false);setTrashOpen(true);}}>Trash</button></div>
       <label className="settings-row"><span>Show file sidebar</span><input type="checkbox" checked={layout.sidebar} onChange={e=>setLayout(current=>({...current,sidebar:e.target.checked}))}/></label>
       <label className="settings-row"><span>Show supporting files</span><input type="checkbox" checked={showAllFiles} onChange={e=>setShowAllFiles(e.target.checked)}/></label>
+      <h3>Panels</h3>{(['latex','graph','agent'] as Tool[]).map(tool=><label className="settings-row" key={tool}><span>{tool==='latex'?'Notes':tool==='graph'?'Graph':'Agent'}</span><input type="checkbox" checked={tools.includes(tool)} onChange={event=>event.target.checked?openTool(tool):closeTool(tool)}/></label>)}
       <h3>Account</h3><div className="settings-actions"><button onClick={()=>{setSettingsOpen(false);window.dispatchEvent(new Event('starview-account'));}}>Account settings</button><button onClick={()=>{void save().then(()=>window.dispatchEvent(new Event('starview-sign-out')));}}>Sign out</button></div>
     </Settings>}
     {newDocument&&project&&<NewDocument files={files} folder={selectedFile.includes('/')?selectedFile.slice(0,selectedFile.lastIndexOf('/')):''} busy={busy} onSave={createDocument} onClose={()=>{if(!busy)setNewDocument(false);}}/>}

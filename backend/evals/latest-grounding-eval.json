@@ -1,0 +1,44 @@
+{
+  "model": "deepseek-r1:7b",
+  "cases": [
+    {
+      "name": "root-angle formula",
+      "expected": "supported",
+      "accepted": true,
+      "correct": true
+    },
+    {
+      "name": "invented Rouche bridge",
+      "expected": "unsupported",
+      "accepted": false,
+      "correct": true
+    },
+    {
+      "name": "wrong complex graph description",
+      "expected": "unsupported",
+      "accepted": false,
+      "correct": true
+    },
+    {
+      "name": "analyticity needs an open domain",
+      "expected": "supported",
+      "accepted": true,
+      "correct": true
+    },
+    {
+      "name": "nonzero derivative condition omitted",
+      "expected": "unsupported",
+      "accepted": false,
+      "correct": true
+    },
+    {
+      "name": "topology uses disks",
+      "expected": "supported",
+      "accepted": true,
+      "correct": true
+    }
+  ],
+  "false_accepts": 0,
+  "false_rejects": 0,
+  "note": "Model-based entailment checks do not establish formal mathematical correctness."
+}

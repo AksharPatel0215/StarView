@@ -24,7 +24,7 @@ class WorkspaceNodes:
             raise ValueError('Workspace supports up to 1,000 extra nodes')
         seen = set()
         for node in value['nodes']:
-            if not isinstance(node, dict) or node.get('kind') not in {'data', 'dashboard'} or not isinstance(node.get('id'), str) or not isinstance(node.get('title'), str) or not isinstance(node.get('targets'), list) or not all(isinstance(target, str) for target in node['targets']):
+            if not isinstance(node, dict) or node.get('kind') not in {'data', 'dashboard', 'flashcards'} or not isinstance(node.get('id'), str) or not isinstance(node.get('title'), str) or not isinstance(node.get('targets'), list) or not all(isinstance(target, str) for target in node['targets']):
                 raise ValueError('Invalid workspace node')
             if not re.fullmatch(r'@node/[a-f0-9]{32}', node['id']) or node['id'] in seen or len(node['targets']) > 1000 or not 1 <= len(node['title']) <= 120:
                 raise ValueError('Invalid workspace node')
@@ -45,7 +45,7 @@ class WorkspaceNodes:
             temporary.unlink(missing_ok=True)
 
     def create(self, kind, title, targets, resource=None):
-        if kind not in {'data', 'dashboard'} or not 1 <= len(title.strip()) <= 120:
+        if kind not in {'data', 'dashboard', 'flashcards'} or not 1 <= len(title.strip()) <= 120:
             raise ValueError('Choose a node type and a title of up to 120 characters')
         if kind == 'data' and (not resource or resource.get('provider') not in {'google', 'microsoft'}):
             raise ValueError('Choose a connected resource')
@@ -94,4 +94,24 @@ class WorkspaceNodes:
         node = next((node for node in self.read()['nodes'] if node['id'] == node_id), None)
         if not node:
             raise FileNotFoundError('Workspace node not found')
+        return node
+
+    def save_cards(self, node_id, cards):
+        if len(cards)>2000: raise ValueError('A set supports up to 2,000 cards')
+        ids=set()
+        for card in cards:
+            if not isinstance(card,dict) or card.get('kind') not in {'definition','problem'} or not isinstance(card.get('id'),str) or not re.fullmatch(r'[a-zA-Z0-9-]{1,64}',card['id']) or card['id'] in ids:
+                raise ValueError('Invalid flashcard')
+            labels=card.get('labels',[])
+            if not isinstance(labels,list) or len(labels)>16 or any(not isinstance(label,str) or not 1<=len(label.strip())<=64 for label in labels):raise ValueError('Use up to 16 labels of 1–64 characters')
+            if 'labels' in card:card['labels']=list(dict.fromkeys(label.strip() for label in labels))
+            ids.add(card['id'])
+            if any(not isinstance(card.get(key),str) or not 1<=len(card[key].strip())<=20000 for key in ['front','back']): raise ValueError('Cards need a question and answer')
+        with _LOCK:
+            value=self.read()
+            node=next((n for n in value['nodes'] if n['id']==node_id),None)
+            if not node: raise FileNotFoundError('Flashcard set not found')
+            if node['kind']!='flashcards': raise ValueError('Choose a flashcard set')
+            node['cards']=cards
+            self.save(value)
         return node

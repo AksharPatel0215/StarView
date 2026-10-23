@@ -5,7 +5,7 @@ from collections import Counter
 from pathlib import Path
 from app.core.knowledge import KnowledgeGraph
 
-STOP = set('a an the of to in is are for and or it be with how what my notes explain create note please'.split())
+STOP = set('a an the of to in is are for and or it be with how what my notes explain create note please all every ways way used use uses important importance tell show about does how can could would should'.split())
 
 def words(text):
     return [word for word in re.findall(r'[\w-]+', text.casefold().replace('-', ' ')) if word not in STOP and len(word) > 1]
@@ -54,14 +54,21 @@ class NoteRetrieval:
             heading_terms=set(words(' '.join(headings)))
             length = sum(c['terms'].values())
             c['score'] = sum(math.log(1+(total-frequencies[t]+.5)/(frequencies[t]+.5))*c['terms'][t]*2.2/(c['terms'][t]+1.2*(.25+.75*length/average)) for t in query_terms if c['terms'][t])
+            filename_terms=set(words(Path(c['path']).stem))
+            title_terms=set(words(c['title']))
+            c['score'] += 16*len(query_terms & filename_terms) + 6*len(query_terms & title_terms)
             c['score'] += 3*len(query_terms & heading_terms)
-            c['score'] += (2 if c['path'] == current else 0)
+            c['score'] += (2 if c['path'] == current and query_terms.intersection(c['terms']) else 0)
         ranked = sorted(chunks,key=lambda c:-c['score'])
         hits=[]; per_file=Counter()
-        for c in ranked:
-            if c['score'] <= 0 or per_file[c['path']] >= 2: continue
-            per_file[c['path']] += 1
-            hits.append({k:v for k,v in c.items() if k != 'terms'})
+        # Cover distinct documents before spending the context budget on repeated passages.
+        for per_document in (1,2):
+            for c in ranked:
+                if c['score'] <= 0 or per_file[c['path']] >= per_document: continue
+                if any(h['path']==c['path'] and h['line_start']==c['line_start'] for h in hits): continue
+                per_file[c['path']] += 1
+                hits.append({k:v for k,v in c.items() if k != 'terms'})
+                if len(hits) >= max(1,min(12,limit)): break
             if len(hits) >= max(1,min(12,limit)): break
         # Include a supporting graph neighbor, even if the question uses different vocabulary.
         linked=[]

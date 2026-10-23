@@ -16,6 +16,8 @@ TEX='\\documentclass{article}\n\\title{%s}\n\\begin{document}\n%s\n\\end{documen
 class AgentTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
+        retriever=patch('app.services.note_agent.draft_evidence',AsyncMock(side_effect=lambda retrieval,query,model,key:retrieval.search(query,6)))
+        retriever.start();self.addCleanup(retriever.stop)
         (self.root/'Limits').mkdir()
         (self.root/'Limits/cr.tex').write_text(TEX%('Cauchy Riemann','Continuous partial derivatives and Cauchy Riemann equations imply complex differentiability.'))
         (self.root/'geometry.tex').write_text(TEX%('Geometry','The complex derivative scales and rotates tangent vectors.'))
@@ -125,11 +127,9 @@ class AgentTests(unittest.TestCase):
         self.assertFalse((self.root/'Limits/new.tex').exists())
 
     def test_explanation_request_cannot_stage_unsolicited_edits(self):
-        status={'available':True,'models':['test-model'],'default_model':'test-model'}
-        data={'answer':'Explanation','citations':['geometry.tex'],'changes':[self.create()]}
-        response=AsyncMock();response.json=lambda:{'message':{'content':json.dumps(data)}};response.raise_for_status=lambda:None
-        with patch('app.services.note_agent.ollama_status',AsyncMock(return_value=status)),patch('httpx.AsyncClient.post',AsyncMock(return_value=response)):
-            result=asyncio.run(ask(self.root,'Explain the complex derivative. No changes.'))
+        from app.core.grounded_rag import grounded_answer
+        with patch('app.core.grounded_rag.hybrid_candidates',AsyncMock(return_value=[])),patch('app.core.grounded_rag.structured',AsyncMock(return_value={'matches':[],'changes':[self.create()]})):
+            result=asyncio.run(grounded_answer(NoteRetrieval(self.root),'Explain the derivative','test-model'))
         self.assertIsNone(result['proposal']);self.assertEqual(self.store.pending(),[])
 
     def test_modifying_connections_does_not_require_a_note_rewrite(self):
@@ -141,30 +141,22 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(result['proposal']['changes'][0]['kind'],'label_connection')
 
     def test_quick_answers_have_small_schema_and_cannot_stage_changes(self):
-        status={'available':True,'models':['deepseek-r1:7b'],'default_model':'auto','fast_model':'deepseek-r1:7b','draft_model':'deepseek-r1:7b'}
-        response=AsyncMock();response.status_code=200;response.json=lambda:{'response':json.dumps({'answer':'A complex derivative is a direction-independent limit.','citations':['geometry.tex'],'changes':[self.create()]}),'prompt_eval_count':120,'eval_count':30};response.raise_for_status=lambda:None
-        post=AsyncMock(return_value=response)
-        with patch('app.services.note_agent.ollama_status',AsyncMock(return_value=status)),patch('httpx.AsyncClient.post',post):
-            result=asyncio.run(ask(self.root,'What is a complex derivative? No changes.','auto'))
+        from app.core.grounding_model import structured
+        from app.core.grounded_rag import GENERATION
+        response=AsyncMock();response.json=lambda:{'response':json.dumps({'claims':[]})};response.raise_for_status=lambda:None;response.status_code=200;response.is_success=True
+        with patch('httpx.AsyncClient.post',AsyncMock(return_value=response)) as post:
+            asyncio.run(structured('deepseek-r1:7b','Use evidence.',{'question':'What is a derivative?'},GENERATION))
         self.assertTrue(post.call_args.args[0].endswith('/api/generate'))
-        payload=post.call_args.kwargs['json']
-        self.assertTrue(payload['raw']);self.assertEqual(payload['options']['num_ctx'],4096)
-        self.assertEqual(set(payload['format']['properties']),{'answer','citations'})
+        payload=post.call_args.kwargs['json'];self.assertTrue(payload['raw'])
+        self.assertEqual(set(payload['format']['properties']),{'claims'})
         self.assertNotIn('note_catalog',payload['prompt']);self.assertNotIn('label_connection',payload['prompt'])
-        self.assertIsNone(result['proposal']);self.assertEqual(self.store.pending(),[])
-        self.assertEqual(result['timing']['prompt_tokens'],120)
 
     def test_followups_retrieve_using_the_latest_exchange(self):
-        status={'available':True,'models':['test-model'],'default_model':'test-model'}
-        response=AsyncMock();response.status_code=200;response.json=lambda:{'message':{'content':json.dumps({'answer':'The derivative measures local scaling and rotation.','citations':['geometry.tex']})}};response.raise_for_status=lambda:None
-        history=[{'role':'user','content':'What are nth roots?'},{'role':'assistant','content':'Roots form a polygon.'},{'role':'user','content':'How do I take a complex derivative?'},{'role':'assistant','content':r"f'(z)=u_x+iv_x"}]
-        post=AsyncMock(return_value=response)
-        with patch('app.services.note_agent.ollama_status',AsyncMock(return_value=status)),patch('httpx.AsyncClient.post',post),patch('app.services.note_agent.NoteRetrieval.search',return_value=[]) as search:
-            asyncio.run(ask(self.root,'Can you elaborate further what that equation means?',history=history))
-        query=search.call_args.args[0]
-        self.assertIn('complex derivative',query);self.assertNotIn('nth roots',query)
-        latest=json.loads(post.call_args.kwargs['json']['messages'][-1]['content'])['immediately_preceding_exchange']
-        self.assertEqual(latest,history[-2:])
+        from app.core.grounded_rag import grounded_answer
+        history=[{'role':'user','content':'What are nth roots?'},{'role':'assistant','content':'A polygon.'},{'role':'user','content':'How do I take a complex derivative?'},{'role':'assistant','content':'A local linear map.'}]
+        with patch('app.core.grounded_rag.hybrid_candidates',AsyncMock(return_value=[])) as search,patch('app.core.grounded_rag.structured',AsyncMock(return_value={'matches':[]})):
+            asyncio.run(grounded_answer(NoteRetrieval(self.root),'Elaborate on that equation','test-model',history=history))
+        query=search.call_args.args[0];self.assertIn('complex derivative',query);self.assertNotIn('nth roots',query)
 
     def test_new_note_connections_use_created_note_and_are_visible_in_source(self):
         status={'available':True,'models':['test-model'],'default_model':'test-model'}
@@ -182,16 +174,11 @@ class AgentTests(unittest.TestCase):
         context=json.loads(payload['messages'][-1]['content'])['retrieved_context']
         self.assertIn('style_example',context)
 
-    def test_proofs_retain_reasoning_and_full_output_budget(self):
+    def test_proofs_use_the_grounded_pipeline_and_selected_model(self):
         status={'available':True,'models':['deepseek-r1:7b'],'default_model':'auto','fast_model':'deepseek-r1:7b','draft_model':'deepseek-r1:7b'}
-        response=AsyncMock();response.status_code=200;response.json=lambda:{'message':{'content':json.dumps({'answer':'Proof from the notes.','citations':['geometry.tex']})}};response.raise_for_status=lambda:None
-        post=AsyncMock(return_value=response)
-        with patch('app.services.note_agent.ollama_status',AsyncMock(return_value=status)),patch('httpx.AsyncClient.post',post):
+        with patch('app.services.note_agent.ollama_status',AsyncMock(return_value=status)),patch('app.services.note_agent.grounded_answer',AsyncMock(return_value={'answer':'Insufficient evidence','proposal':None})) as grounded:
             result=asyncio.run(ask(self.root,'Prove the Cauchy Riemann necessary conditions. No changes.','auto'))
-        self.assertTrue(post.call_args.args[0].endswith('/api/chat'))
-        payload=post.call_args.kwargs['json']
-        self.assertNotIn('think',payload);self.assertEqual(payload['options']['num_predict'],3500)
-        self.assertIsNone(result['proposal'])
+        self.assertEqual(grounded.call_args.args[2],'deepseek-r1:7b');self.assertIsNone(result['proposal'])
 
     def test_retrieval_skips_preamble_and_prioritizes_defining_heading(self):
         content='\n'.join(['\\documentclass{article}']+['% Complex derivative setup']*65+['\\begin{document}','\\section{Complex derivative}','A complex derivative is a limit independent of direction.','\\end{document}'])

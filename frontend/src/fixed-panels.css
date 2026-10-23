@@ -1,0 +1,86 @@
+/* Fixed reading workspace: Notes left, Graph over Agent on the right. */
+.fixed-panels .dock-surface>.dock-window{border:0;border-radius:0;background:var(--ui-canvas);}
+.fixed-panels .dock-window>.tool-header{height:38px;min-height:38px;padding:4px 12px;border-bottom:1px solid color-mix(in srgb,var(--ui-border) 55%,transparent);background:var(--ui-canvas);}
+.fixed-tool-title{padding:3px 0;gap:7px;user-select:none;cursor:default;}
+.fixed-panels .dock-divider{background:var(--ui-canvas);border:0;border-radius:0;}
+.fixed-panels .dock-divider>span{width:1px;height:100%;border-radius:0;background:color-mix(in srgb,var(--ui-border) 60%,transparent);transition:background .15s;}
+.fixed-panels .dock-divider-y>span{width:100%;height:1px;}
+.fixed-panels .dock-divider:hover,.fixed-panels .dock-divider:focus-visible,.fixed-panels .dock-divider:active{background:color-mix(in srgb,var(--ui-accent) 5%,var(--ui-canvas));}
+.fixed-panels .dock-divider:hover>span,.fixed-panels .dock-divider:focus-visible>span,.fixed-panels .dock-divider:active>span{background:color-mix(in srgb,var(--ui-accent) 65%,var(--ui-border));}
+.studio-workspace>.resize-handle{min-width:6px;width:6px;border:0;background:var(--ui-canvas);}
+.studio-workspace>.resize-handle>span{width:1px;height:100%;background:color-mix(in srgb,var(--ui-border) 60%,transparent);}
+.studio-workspace>.resize-handle:hover>span{background:var(--ui-accent);}
+.fixed-panels .tool-window>.notes-agent .agent-model{padding:6px 14px;font-size:11px;flex-shrink:0;}
+.fixed-panels .agent-model select{padding-block:4px;font-size:11px;}
+.fixed-panels .tool-window>.notes-agent>.agent-notice{margin:0;padding:2px 14px 6px;font-size:10px;line-height:1.4;flex-shrink:0;}
+.fixed-panels .tool-window>.notes-agent .agent-conversation,.fixed-panels .tool-window>.notes-agent .agent-review{padding:10px 16px;}
+.fixed-panels .agent-welcome h3{margin:0 0 5px;font-size:14px;}
+.fixed-panels .agent-welcome p{margin:0 0 8px;font-size:12px;line-height:1.5;}
+.fixed-panels .agent-welcome>button{display:inline-block;margin:3px 5px 3px 0;padding:5px 8px;border-radius:7px;font-size:11px;}
+.fixed-panels .tool-window>.notes-agent .agent-composer{padding:9px 11px;margin:4px 12px 10px;gap:4px 8px;border-radius:12px;flex-shrink:0;}
+.fixed-panels .agent-composer textarea{min-height:36px;max-height:96px;font-size:12px;line-height:1.5;}
+.fixed-panels .agent-composer small{font-size:9px;}
+.fixed-panels .agent-pending{max-height:80px;padding:6px 14px;flex-shrink:0;}
+.fixed-panels .studio-graph .graph-stage{min-height:0;}
+.fixed-panels .graph-toolbar{padding:7px 10px;gap:6px;flex-wrap:wrap;flex-shrink:0;}
+.fixed-panels .graph-toolbar button,.fixed-panels .graph-toolbar select{font-size:11px;}
+.fixed-panels .studio-graph .graph-navigation{bottom:10px;left:12px;}
+.fixed-panels .studio-graph .graph-navigation button{font-size:10px;padding:5px 7px;}
+
+/* Keep the chat compact and leave the graph the larger share. */
+.fixed-panels .agent-options-row{display:flex;justify-content:flex-end;flex-shrink:0;height:23px;padding:0 10px;}
+.fixed-panels .agent-options-row .compact-menu>summary{display:grid;place-items:center;width:24px;height:22px;padding:2px;border-radius:5px;cursor:pointer;}
+.fixed-panels .agent-options-row svg{width:14px;height:14px;color:var(--ui-muted);}
+.fixed-panels .agent-options-row .compact-menu-body{right:0;left:auto;min-width:300px;z-index:60;}
+.fixed-panels .agent-options-row .agent-notice{padding:4px 12px;margin:0;font-size:11px;line-height:1.5;}
+.fixed-panels .agent-empty-hint{margin:4px 0;color:var(--ui-muted);font-size:12px;}
+.fixed-panels .tool-window>.notes-agent .agent-composer{padding:7px 9px;margin:3px 12px 10px;align-items:center;gap:6px;}
+.fixed-panels .agent-composer textarea{min-height:24px;height:24px;max-height:80px;padding:2px 0;resize:vertical;}
+.fixed-panels .agent-composer .agent-send{width:28px;height:28px;}
+.fixed-panels .dock-window:has(.agent-options-row .compact-menu[open]){z-index:25;overflow:visible;}
+
+.fixed-panels .agent-intro{padding:4px 0 8px;}
+.fixed-panels .agent-intro h3{margin:0 0 5px;font-size:14px;font-weight:500;color:var(--ui-text);}
+.fixed-panels .agent-intro p{margin:0 0 11px;font-size:12px;line-height:1.5;color:var(--ui-muted);}
+.fixed-panels .agent-starters{display:flex;flex-wrap:wrap;gap:6px;}
+.fixed-panels .agent-starters>button{padding:5px 9px;font-size:11px;font-weight:400;border:1px solid color-mix(in srgb,var(--ui-border) 75%,transparent);border-radius:8px;background:var(--ui-surface);color:var(--ui-muted);}
+.fixed-panels .agent-starters>button:hover,.fixed-panels .agent-starters>button:focus-visible{color:var(--ui-text);border-color:var(--ui-accent);background:var(--ui-raised);}
+
+/* Reserve toolbar space separately from the graph canvas. */
+.fixed-panels .studio-graph,.fixed-panels .studio-graph .connections,.fixed-panels .studio-graph .graph-explorer{min-width:0;min-height:0;}
+.fixed-panels .studio-graph .graph-explorer{flex:1 1 0;align-self:stretch;}
+.fixed-panels .studio-graph .graph-toolbar{display:grid;grid-template-columns:minmax(90px,1fr) minmax(110px,150px) 30px;align-items:center;flex:0 0 auto;min-height:46px;padding:8px 12px;gap:6px;}
+.fixed-panels .studio-graph .graph-toolbar>input,.fixed-panels .studio-graph .graph-toolbar>select{width:100%;min-width:0;max-width:none;margin:0;}
+.fixed-panels .studio-graph .graph-toolbar>input,.fixed-panels .studio-graph .graph-toolbar>select{height:30px;padding:5px 8px;}
+.fixed-panels .studio-graph .graph-stage{flex:1 1 0;min-height:0;height:auto;}
+.fixed-panels .studio-graph .graph-details{flex-shrink:0;}
+
+.fixed-panels .studio-graph{flex-direction:column;}
+.agent-scene-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 12px;font-size:10px;color:var(--ui-muted);flex-shrink:0;border-bottom:1px solid var(--ui-border);}
+.agent-scene-bar button{padding:3px 7px;font-size:10px;white-space:nowrap;}
+.agent-note-preview{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto;}
+.agent-note-preview>strong{padding:10px 16px;font-size:12px;}
+.agent-note-preview>.draft-document{display:flex;flex:1;flex-direction:column;min-height:0;padding:0 12px 12px;}
+.agent-note-preview .draft-preview{flex:1;min-height:0;overflow:auto;}
+.agent-note-preview .draft-preview>.pdf-reader{height:100%;}
+.agent-note-preview .draft-document textarea{height:50vh;width:100%;}
+.agent-note-preview{outline:1px dashed var(--ui-accent);outline-offset:-3px;}
+.space-edge[data-provisional=true] path,.space-edge[data-provisional=true] line{stroke-dasharray:2 6;stroke-linecap:round;animation:proposal-flow 1.8s linear infinite;}
+.space-edge[data-draft-action=disconnect]{opacity:.45;}
+.space-node[data-provisional=true] .star-body :is(circle,polygon,path,rect){stroke-dasharray:2 4;stroke-linecap:round;animation:proposal-flow 1.8s linear infinite;}
+.provisional-banner{border-bottom:1px dashed var(--ui-accent);}
+@keyframes proposal-flow{to{stroke-dashoffset:-32;}}
+@media(prefers-reduced-motion:reduce){.space-edge[data-provisional=true] :is(path,line),.space-node[data-provisional=true] .star-body :is(circle,polygon,path,rect){animation:none;}}
+:root[data-motion=reduced] .space-edge[data-provisional=true] :is(path,line),:root[data-motion=reduced] .space-node[data-provisional=true] .star-body :is(circle,polygon,path,rect){animation:none;}
+
+.agent-note-preview{position:relative;outline:none;}
+.draft-preview-frame{position:absolute;inset:0;width:100%;height:100%;z-index:5;pointer-events:none;overflow:visible;}
+.draft-preview-frame rect{fill:none;stroke:var(--ui-accent);stroke-width:1.5;stroke-dasharray:2 6;animation:proposal-flow 1.8s linear infinite;}
+.space-edge[data-provisional=true] .edge-line{opacity:.8!important;}
+@media(prefers-reduced-motion:reduce){.draft-preview-frame rect{animation:none;}}
+:root[data-motion=reduced] .draft-preview-frame rect{animation:none;}
+
+/* Background stars are decorative; only foreground and preview nodes accept input. */
+.fixed-panels .constellation .background-star{pointer-events:none;cursor:default;}
+
+.space-edge.path-edge .edge-line{opacity:.85!important;stroke-width:2;stroke:var(--ui-accent);}

@@ -1,0 +1,55 @@
+/* Docked windows share one canvas so moving them preserves their live content. */
+.dock-scroll{flex:1;min-width:0;min-height:0;overflow:auto;background:var(--ui-canvas);overscroll-behavior:contain;}
+.dock-surface{position:relative;isolation:isolate;}
+.dock-surface>.dock-window{position:absolute;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;flex:none;border:1px solid var(--ui-border);border-radius:9px;background:var(--ui-canvas);}
+.dock-surface>.dock-window:has(.compact-menu[open]){z-index:25;}
+.dock-surface>.dock-window>.notes-agent{min-height:0;}
+.dock-window>.tool-header{height:43px;min-height:43px;padding:5px 8px;gap:4px;background:var(--ui-surface);border-bottom:1px solid var(--ui-border);}
+.dock-window .dock-title-grip{display:flex;align-items:center;gap:6px;min-width:0;padding:4px 3px;background:none;border:0;border-radius:5px;cursor:grab;touch-action:none;user-select:none;white-space:nowrap;}
+.dock-title-grip:hover{background:var(--ui-raised);color:var(--ui-text);}
+.dock-title-grip:active{cursor:grabbing;}
+.dock-title-grip strong{overflow:hidden;text-overflow:ellipsis;font-size:11px;}
+.dock-grip{font-size:17px;line-height:1;opacity:.65;}
+.dock-window .tool-header-actions{gap:1px;flex-shrink:0;}
+.dock-window .tool-header-actions>.nav-icon-button{width:26px;height:28px;padding:4px;}
+.dock-window .tool-header .compact-menu>summary{width:24px;height:28px;}
+.dock-window .tool-header .page-view-toggle{padding:1px;margin-left:auto;flex-shrink:0;}
+.dock-window .page-view-toggle button{width:24px;height:24px;}
+.dock-window .tool-header .compact-menu-body{max-height:calc(var(--dock-height) - 50px);overflow-y:auto;min-width:185px;text-transform:none;letter-spacing:normal;}
+.dock-window .dock-close{opacity:.85;}
+.dock-window .dock-close:hover{background:color-mix(in srgb,var(--ui-accent) 15%,var(--ui-raised));color:var(--ui-text);}
+.dock-menu-heading{font-size:10px;color:var(--ui-muted);padding:5px 8px 2px;margin:0;}
+.dock-menu-group{border-top:1px solid var(--ui-border);margin-top:4px;padding-top:4px;}
+.dock-divider{position:absolute;z-index:5;display:grid;place-items:center;background:var(--ui-raised);border:1px solid var(--ui-border);border-radius:6px;touch-action:none;outline-offset:-2px;}
+.dock-divider-x{cursor:col-resize;}
+.dock-divider-y{cursor:row-resize;}
+.dock-divider>span{display:block;width:3px;height:38px;border-radius:4px;background:color-mix(in srgb,var(--ui-muted) 65%,transparent);}
+.dock-divider-y>span{width:38px;height:3px;}
+.dock-divider:hover,.dock-divider:focus-visible,.dock-divider:active{background:color-mix(in srgb,var(--ui-accent) 20%,var(--ui-raised));border-color:var(--ui-accent);}
+.dock-divider:hover>span,.dock-divider:focus-visible>span{background:var(--ui-accent);}
+.dock-drop-preview{position:absolute;z-index:40;pointer-events:none;display:grid;place-items:center;padding:14px;border:2px solid var(--ui-accent);border-radius:10px;background:color-mix(in srgb,var(--ui-accent) 22%,transparent);box-shadow:inset 0 0 0 3px color-mix(in srgb,var(--ui-accent) 8%,transparent);}
+.dock-drop-preview>span,.dock-drag-hint{padding:8px 12px;border:1px solid var(--ui-accent);border-radius:8px;background:var(--ui-surface);color:var(--ui-text);font-size:12px;box-shadow:0 4px 20px #0002;}
+.dock-drag-hint{position:absolute;z-index:45;bottom:18px;left:50%;transform:translateX(-50%);pointer-events:none;white-space:nowrap;}
+.dock-window.dock-drag-source{opacity:.55;}
+.dock-scroll.is-docking,.dock-scroll.is-resizing{user-select:none;}
+.dock-scroll.is-docking iframe,.dock-scroll.is-resizing iframe{pointer-events:none;}
+.dock-surface>.empty-tools{position:absolute;inset:0;}
+.studio-sidebar.sidebar{min-width:180px;max-width:420px;}
+.studio-workspace>.resize-handle{display:grid;align-self:stretch;min-width:8px;width:8px;background:var(--ui-raised);border-inline:1px solid var(--ui-border);}
+.studio-workspace>.resize-handle>span{background:var(--ui-muted);}
+.studio-header>.nav-icon-button:last-child{margin-left:auto;}
+.studio-sidebar .sidebar-heading .compact-menu{position:relative;letter-spacing:normal;text-transform:none;}
+.studio-sidebar .sidebar-heading .compact-menu>summary{width:27px;height:27px;display:grid;place-items:center;border:1px solid var(--ui-border);border-radius:7px;background:var(--ui-raised);color:var(--ui-text);list-style:none;cursor:pointer;}
+.studio-sidebar .sidebar-heading .compact-menu-body{left:0;right:auto;min-width:190px;z-index:80;}
+.file-tree .file-entry{display:flex;align-items:center;min-width:0;border-radius:7px;}
+.file-tree .file-entry.selected{background:var(--ui-raised);box-shadow:inset 2px 0 var(--ui-accent);}
+.file-tree .file-entry>button.file-row{flex:1;min-width:0;margin:0;background:transparent;border-radius:7px;box-shadow:none;}
+.file-tree .file-entry>button.file-more{width:27px;flex:0 0 27px;display:grid;place-items:center;padding:2px;margin:0 3px 0 0;border:0;border-radius:5px;font-size:18px;line-height:24px;background:transparent;color:var(--ui-muted);opacity:0;}
+.file-tree .file-entry:hover>.file-more,.file-tree .file-entry:focus-within>.file-more,.file-tree .file-entry>.file-more[aria-expanded=true]{opacity:1;}
+.file-tree .file-entry>.file-more:hover{background:var(--ui-surface);color:var(--ui-text);}
+.file-context-menu{position:fixed;z-index:500;width:190px;padding:5px;border:1px solid var(--ui-border);border-radius:10px;background:var(--ui-surface);box-shadow:0 8px 30px #0003;}
+.file-context-menu>button{display:block;width:100%;padding:9px 10px;text-align:left;font-size:12px;border:0;background:transparent;color:var(--ui-text);border-radius:6px;}
+.file-context-menu>button:hover,.file-context-menu>button:focus-visible{background:var(--ui-raised);}
+.file-context-menu>.file-delete-action{color:var(--ui-muted);}
+@media(hover:none){.file-tree .file-entry>button.file-more{opacity:1;}}
+@media(max-width:750px){.studio-workspace>.resize-handle{display:none;}.dock-window>.tool-header{gap:2px;padding-inline:5px;}.dock-drag-hint{max-width:90%;white-space:normal;text-align:center;}.studio-sidebar .sidebar-heading .compact-menu-body{position:fixed;top:98px;left:16px;right:auto;}}

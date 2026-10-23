@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
-export default function CompactMenu({label,children}:{label:string;children:ReactNode}) {
+export default function CompactMenu({label,children,iconOnly=false,icon}:{label:string;children:ReactNode;iconOnly?:boolean;icon?:ReactNode}) {
   const ref=useRef<HTMLDetailsElement>(null);
   useEffect(()=>{
     const outside=(event:PointerEvent)=>{if(ref.current&&!ref.current.contains(event.target as Node))ref.current.open=false;};
@@ -8,5 +8,5 @@ export default function CompactMenu({label,children}:{label:string;children:Reac
     document.addEventListener('pointerdown',outside);document.addEventListener('keydown',escape);
     return()=>{document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',escape);};
   },[]);
-  return <details ref={ref} className="compact-menu"><summary>{label}<span aria-hidden="true">⌄</span></summary><div className="compact-menu-body" onClick={event=>{if((event.target as HTMLElement).closest('button')&&ref.current)ref.current.open=false;}}>{children}</div></details>;
+  return <details ref={ref} className="compact-menu"><summary aria-label={label} title={label}>{iconOnly?(icon||<span aria-hidden="true">⋯</span>):<>{label}<span aria-hidden="true">⌄</span></>}</summary><div className="compact-menu-body" onClick={event=>{if((event.target as HTMLElement).closest('button')&&ref.current)ref.current.open=false;}}>{children}</div></details>;
 }

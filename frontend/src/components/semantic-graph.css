@@ -1,0 +1,10 @@
+/* Quiet context layer; active glyphs are painted above it in SVG order. */
+.constellation .space-node.background-star,.constellation .space-node.background-star.dimmed,.constellation[data-candidates=true] .space-node.background-star{opacity:.13;filter:saturate(.12);pointer-events:none}
+.constellation .background-star .node-core,.constellation .background-star .star-body{animation:none!important;filter:none!important}
+.constellation .background-star .node-halo{display:none}
+.constellation .space-node.preview-star{opacity:.66;filter:saturate(.65)}
+.constellation .space-node.highlighted:not(.preview-star){opacity:1;filter:none}
+.constellation .background-edge{opacity:.24;filter:saturate(.15)}
+.graph-shape-legend{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.45rem;font-size:.78rem;margin:.8rem 0}
+.graph-shape-legend span{display:flex;align-items:center;gap:.5rem;text-transform:capitalize}
+.graph-shape-legend svg{width:22px;height:22px;color:var(--ui-accent);flex:none}

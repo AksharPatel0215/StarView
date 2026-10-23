@@ -1,8 +1,10 @@
+import KnowledgeDashboard from './KnowledgeDashboard';
+import type {KnowledgeNode} from '../knowledgeHierarchy';
 import { useEffect, useState } from 'react';
 import { getStats } from '../api/client';
 import type { WorkspaceNode, WorkspaceStats, DocumentNode } from '../api/client';
 import { dashboardSections } from '../dashboardSections';
-export default function Dashboard({project,node,onOpen,refresh,resources,documents}:{project:string;node?:WorkspaceNode|null;onOpen:(path:string)=>void;refresh:number;resources:DocumentNode[];documents:DocumentNode[]}) {
+export default function Dashboard({project,node,onOpen,refresh,resources,documents,nodes=[]}:{project:string;node?:WorkspaceNode|null;onOpen:(path:string)=>void;refresh:number;resources:DocumentNode[];documents:DocumentNode[];nodes?:KnowledgeNode[]}) {
   const [stats,setStats]=useState<WorkspaceStats|null>(null);
   const [error,setError]=useState('');
   const [query,setQuery]=useState('');
@@ -11,6 +13,9 @@ export default function Dashboard({project,node,onOpen,refresh,resources,documen
   const search=query.trim().toLowerCase();
   const visible=sections.filter(section=>`${section.guide.title} ${section.notes.map(note=>note.title).join(' ')}`.toLowerCase().includes(search));
   const looseTargets=node?documents.filter(doc=>node.targets.includes(doc.path)&&!doc.path.endsWith('/index.tex')&&(!doc.kind||doc.kind==='document')):[];
+  const hierarchyNode=node as KnowledgeNode|undefined;
+  const root=nodes.find(n=>n.level==='root');
+  if(hierarchyNode?.level||(!node&&root))return <KnowledgeDashboard key={hierarchyNode?.id||root!.id} node={hierarchyNode?.level?hierarchyNode:root!} nodes={nodes} documents={documents} onOpen={onOpen}/>;
   return <div className="dashboard course-dashboard">
     <span className="eyebrow">{node?'Course dashboard':'Workspace overview'}</span>
     <h1>{node?.title||project}</h1>

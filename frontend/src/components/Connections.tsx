@@ -4,8 +4,8 @@ import { edgeColor, edgeLabels } from "../graphTheme";
 import type { LabelHandler } from "./EdgeEditor";
 import type { DocumentLink } from "../api/client";
 import type { KnowledgeGraph } from "../api/client";
-type Props = { visible?: boolean; graph: KnowledgeGraph; selected: string; busy: boolean; onOpen: (path: string) => void; onConnect: (source: string, target: string, remove?: boolean) => void; onLabel: LabelHandler; onColor: (kind: "tag" | "relationship" | "node", key: string, color: string | null) => Promise<void> };
-export default function Connections({ visible = true, graph, selected, busy, onOpen, onConnect, onLabel, onColor }: Props) {
+type Props = { pathNodes?:string[];focusPaths?:string[];sceneVersion?:number; visible?: boolean; graph: KnowledgeGraph; selected: string; busy: boolean; onOpen: (path: string) => void; onConnect: (source: string, target: string, remove?: boolean) => void; onLabel: LabelHandler; onColor: (kind: "tag" | "relationship" | "node", key: string, color: string | null) => Promise<void> };
+export default function Connections({ pathNodes,focusPaths,sceneVersion,visible = true, graph, selected, busy, onOpen, onConnect, onLabel, onColor }: Props) {
   const [edge, setEdge] = useState<DocumentLink | null>(null);
   const [target, setTarget] = useState("");
   const document = graph.documents.find(node => node.path === selected && (!node.kind||node.kind==='document'));
@@ -25,8 +25,8 @@ export default function Connections({ visible = true, graph, selected, busy, onO
     }) : <p>{backwards ? "No documents link here yet." : "No outgoing connections yet."}</p>;
   }
   return <div className="connections">
-    <GraphExplorer visible={visible} graph={graph} selected={selected} busy={busy} onOpen={onOpen} onLabel={onLabel} onColor={onColor} edge={edge} onEdge={setEdge}/>
-    <details className="connection-tools"><summary>Manage connections</summary>{document ? <><h2 className="connection-title">{document.title}</h2><p className="project-root">{document.path}</p>
+    <GraphExplorer pathNodes={pathNodes} focusPaths={focusPaths} sceneVersion={sceneVersion} visible={visible} graph={graph} selected={selected} busy={busy} onOpen={onOpen} onLabel={onLabel} onColor={onColor} edge={edge} onEdge={candidate=>{if(!candidate?.provisional)setEdge(candidate);}}/>
+    {sceneVersion===undefined&&<details className="connection-tools"><summary>Connections <small>{outgoing.length+incoming.length}</small></summary>{document ? <><h2 className="connection-title">{document.title}</h2><p className="project-root">{document.path}</p>
       <div className="graph-tags">{document.tags.map(tag => <span className="tag-chip" key={tag}>{tag}</span>)}</div><h3>Connect a document</h3>
       <form className="connect-form" onSubmit={e => { e.preventDefault(); const next = choices.find(node => node.path === target); if (next) { onConnect(selected, next.path); setTarget(""); } }}>
         <select aria-label="Document to connect" value={choices.some(node => node.path === target) ? target : ""} disabled={busy || choices.length === 0} onChange={e => setTarget(e.target.value)}><option value="">Choose a document…</option>{choices.map(node => <option key={node.path} value={node.path}>{node.title} — {node.path}</option>)}</select>
@@ -35,6 +35,6 @@ export default function Connections({ visible = true, graph, selected, busy, onO
       <h3>Links from this document <span>{outgoing.length}</span></h3>{links(outgoing)}
       <h3>Backlinks <span>{incoming.length}</span></h3>{links(incoming, true)}
     </> : <p>Select a document to manage its links. Dashboard and data connections can be changed with Edit node & connections.</p>}
-    </details>
+    </details>}
   </div>;
 }

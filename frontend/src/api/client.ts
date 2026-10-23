@@ -49,8 +49,8 @@ export async function compileProjectFile(name: string, path: string): Promise<st
 export const getPdfUrl = (name: string, path: string, version: number) =>
   `${API_URL}/api${projectPath(name)}/pdf/${filePath(path)}?v=${version}`;
 
-export type DocumentNode = { path: string; title: string; is_main: boolean; tags: string[]; kind?: "document" | "dashboard" | "data" };
-export type DocumentLink = { source: string; target: string; missing: boolean; kind?: "inline" | "both" | "workspace"; labels?: string[]; color?: string | null };
+export type DocumentNode = { provisional?:boolean; path: string; title: string; is_main: boolean; tags: string[]; kind?: "document" | "dashboard" | "data" | "flashcards" };
+export type DocumentLink = { provisional?:boolean;draft_action?:string; source: string; target: string; missing: boolean; kind?: "inline" | "both" | "workspace"; labels?: string[]; color?: string | null };
 export type KnowledgeGraph = { documents: DocumentNode[]; links: DocumentLink[]; styles?: GraphStyles };
 export const getConnections = (name: string) => request<KnowledgeGraph>(`${projectPath(name)}/connections`);
 export const connectDocuments = (name: string, source: string, target: string, remove = false) => request<KnowledgeGraph>(`${projectPath(name)}/connections`, {
@@ -75,13 +75,13 @@ export const signIn = async(name:string,password:string,setup=false)=>session(aw
 export const signOut = ()=>request('/auth/logout',{method:'POST'});
 export const changePassword = async(current:string,password:string)=>session(await request<Session>('/auth/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current,password})}));
 export type CloudResource = {provider:'google'|'microsoft';id:string;name:string;kind:'sheet'|'document';mime:string};
-export type WorkspaceNode = {id:string;title:string;kind:'dashboard'|'data';targets:string[];resource:CloudResource|null};
+export type WorkspaceNode = {id:string;title:string;kind:'dashboard'|'data'|'flashcards';targets:string[];cards?:Flashcard[];resource:CloudResource|null};
 export type WorkspaceStats = {documents:number;connections:number;isolated:number;unresolved:number;data_nodes:number;dashboards:number;assets:number|null;tags:{name:string;count:number}[];hubs:{path:string;title:string;connections:number}[]};
 export type AccountConnection = {provider:'google'|'microsoft';connected:boolean;configured:boolean};
 export type ResourceListing = {items:{id:string;name:string;folder:boolean}[];cursor:string};
 export type ResourcePreview = {kind:'pdf'|'document'|'sheet';paragraphs?:string[];sheets?:{name:string;rows:string[][];truncated:boolean}[];truncated?:boolean};
 export const getWorkspaceNodes=(name:string)=>request<WorkspaceNode[]>(`${projectPath(name)}/workspace/nodes`);
-export const createWorkspaceNode=(name:string,node:{kind:'dashboard'|'data';title:string;targets:string[];resource?:{provider:string;id:string}})=>request<WorkspaceNode>(`${projectPath(name)}/workspace/nodes`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(node)});
+export const createWorkspaceNode=(name:string,node:{kind:'dashboard'|'data'|'flashcards';title:string;targets:string[];resource?:{provider:string;id:string}})=>request<WorkspaceNode>(`${projectPath(name)}/workspace/nodes`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(node)});
 export const updateWorkspaceNode=(name:string,node:WorkspaceNode)=>request<WorkspaceNode>(`${projectPath(name)}/workspace/nodes`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:node.id,title:node.title,targets:node.targets})});
 export const getStats=(name:string,node?:string)=>request<WorkspaceStats>(`${projectPath(name)}/workspace/stats${node?`?node=${encodeURIComponent(node)}`:''}`);
 export const getAccounts=()=>request<AccountConnection[]>('/accounts');
@@ -103,7 +103,7 @@ export const restoreFile=(name:string,id:string)=>request<{path:string}>(`${proj
 export type AgentChange={kind:'create_note'|'update_note'|'connect'|'disconnect'|'label_connection';path:string;content:string;source:string;target:string;labels:string[];reason:string};
 export type AgentProposal={id:string;status:string;created_at:string;answer:string;citations:string[];changes:AgentChange[];before:Record<string,string|null>;before_edges?:DocumentLink[]};
 export type AgentSource={path:string;title:string;line_start:number;line_end:number;excerpt:string};
-export type AgentReply={answer:string;citations:string[];sources:AgentSource[];proposal:AgentProposal|null;model:string;timing?:{elapsed_seconds:number;prompt_tokens:number|null;output_tokens:number|null}};
+export type AgentReply={grounding?:{method:string;quotes_verified:boolean;verification:string;steps:{source:string;target:string;status:string;claims:unknown[]}[]};concept_path?:{endpoints:string[];paths:string[];found:boolean}|null;answer:string;citations:string[];sources:AgentSource[];proposal:AgentProposal|null;model:string;timing?:{elapsed_seconds:number;prompt_tokens:number|null;output_tokens:number|null}};
 export type AgentStatus={available:boolean;models:string[];default_model:string;message:string};
 export const getAgentStatus=()=>request<AgentStatus>('/agent/status');
 export const getAgentProposals=(name:string)=>request<AgentProposal[]>(`${projectPath(name)}/agent/proposals`);
@@ -115,3 +115,6 @@ export async function previewAgentDraft(name:string,path:string,content:string):
  if(!response.ok){const data=await response.json();throw new Error(typeof data.detail==='string'?data.detail:data.detail?.stdout||data.detail?.stderr||'Could not preview this draft');}
  return response.blob();
 }
+
+export type Flashcard={id:string;kind:'definition'|'problem';front:string;back:string;labels?:string[]};
+export const saveFlashcards=(name:string,id:string,cards:Flashcard[])=>request<WorkspaceNode>(`${projectPath(name)}/workspace/flashcards`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,cards})});

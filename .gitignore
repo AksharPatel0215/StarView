@@ -14,3 +14,7 @@ __pycache__/
 *.sqlite3
 *.sqlite3-*
 token.key
+
+# Local environments and macOS metadata
+.venv/
+.DS_Store

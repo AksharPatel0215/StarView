@@ -1,0 +1,41 @@
+{
+  "description": "Reviewed expected entailment labels for StarView connection explanations; model judgments are not mathematical proof.",
+  "cases": [
+    {
+      "name": "root-angle formula",
+      "expected": "supported",
+      "claim": "The nth-root angles are obtained by dividing an argument plus integer multiples of two pi by n.",
+      "quote": "w_k=r^{1/n}e^{i(\\theta+2\\pi k)/n},\\qquad k=0,1,\\ldots,n-1"
+    },
+    {
+      "name": "invented Rouche bridge",
+      "expected": "unsupported",
+      "claim": "The nth-root formula applies the argument principle and Rouch\u00e9s theorem to count and locate polynomial roots.",
+      "quote": "w_k=r^{1/n}e^{i(\\theta+2\\pi k)/n},\\qquad k=0,1,\\ldots,n-1"
+    },
+    {
+      "name": "wrong complex graph description",
+      "expected": "unsupported",
+      "claim": "The graph of a complex polynomial intersects the origin in the complex plane at a root.",
+      "quote": "Every nonconstant polynomial with complex coefficients has at least one complex root."
+    },
+    {
+      "name": "analyticity needs an open domain",
+      "expected": "supported",
+      "claim": "Analyticity on a domain requires a complex derivative at every point of the open domain.",
+      "quote": "A function $f:D\\to\\mathbb C$ on an open set $D$ is called analytic on $D$ (or holomorphic on $D$) if $f\\x27(z)$ exists at every point $z\\in D$."
+    },
+    {
+      "name": "nonzero derivative condition omitted",
+      "expected": "unsupported",
+      "claim": "Every analytic function preserves angles at every point, including at critical points.",
+      "quote": "If the derivative is nonzero, its argument gives local rotation and its modulus gives local scaling."
+    },
+    {
+      "name": "topology uses disks",
+      "expected": "supported",
+      "claim": "A set is open when each of its points has a disk centered there that stays inside the set.",
+      "quote": "The set S is open if every point of S is an interior point. A point is interior if there exists r greater than zero such that D(z0,r) is contained in S."
+    }
+  ]
+}
